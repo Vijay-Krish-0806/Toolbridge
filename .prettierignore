@@ -1,0 +1,6 @@
+pnpm-lock.yaml
+dist/
+coverage/
+.turbo/
+# Source spec, kept exactly as written.
+docs/BUILD_PLAN.md

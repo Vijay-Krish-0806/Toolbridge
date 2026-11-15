@@ -1,0 +1,32 @@
+name: toolbridge
+
+services:
+  mongo:
+    # Atlas Local: MongoDB plus Search and Vector Search in one container. Health check is built in.
+    image: mongodb/mongodb-atlas-local:8.0
+    hostname: mongo
+    environment:
+      MONGODB_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env}
+      MONGODB_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+    ports:
+      - 127.0.0.1:${MONGO_PORT:-27017}:27017
+    volumes:
+      - mongo-data:/data/db
+      - mongo-config:/data/configdb
+
+  redis:
+    image: redis:8.10-alpine
+    ports:
+      - 127.0.0.1:${REDIS_PORT:-6379}:6379
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  mongo-data:
+  mongo-config:
+  redis-data:
