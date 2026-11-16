@@ -20,13 +20,19 @@ import { ShipmentsModule } from './shipments/shipments.module.js';
 @Module({})
 export class AppModule {
   /** Built from an already-validated config, so nothing below reads process.env directly. */
-  static register(config: HostConfig): DynamicModule {
+  static register(config: HostConfig, options: { lazyDatabase?: boolean } = {}): DynamicModule {
     return {
       module: AppModule,
       imports: [
         CoreModule.register(config),
         // autoIndex off: indexes are built by the seed at a known time, not on every app start.
-        MongooseModule.forRoot(config.MONGO_URI, { dbName: config.MONGO_DB, autoIndex: false }),
+        // lazyDatabase: build the app without connecting (used by the spec export, which needs
+        // only routes and DTOs).
+        MongooseModule.forRoot(config.MONGO_URI, {
+          dbName: config.MONGO_DB,
+          autoIndex: false,
+          lazyConnection: options.lazyDatabase ?? false,
+        }),
         JwtModule.register({
           global: true,
           secret: config.JWT_SECRET,

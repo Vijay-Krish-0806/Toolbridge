@@ -18,7 +18,9 @@
     "infra:up": "docker compose --env-file .env -f infra/docker-compose.yml up -d --wait",
     "infra:down": "docker compose --env-file .env -f infra/docker-compose.yml down",
     "start:host": "pnpm --filter @toolbridge/host-store-api start",
-    "check:access": "pnpm --filter @toolbridge/host-store-api check:access"
+    "check:access": "pnpm --filter @toolbridge/host-store-api check:access",
+    "export:spec": "pnpm --filter @toolbridge/host-store-api export:spec",
+    "test:e2e": "pnpm --filter @toolbridge/host-store-api test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

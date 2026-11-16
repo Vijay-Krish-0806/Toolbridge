@@ -24,6 +24,10 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # The committed spec must match the code. Export needs config but no database.
+      - run: cp .env.example .env
+      - run: pnpm export:spec
+      - run: git diff --exit-code specs/
 
   infra:
     runs-on: ubuntu-latest
@@ -44,6 +48,7 @@ jobs:
       - run: pnpm start:host > host.log 2>&1 &
       - run: curl --silent --fail --retry 60 --retry-connrefused --retry-all-errors --retry-delay 1 http://127.0.0.1:3000/health
       - run: pnpm check:access
+      - run: pnpm test:e2e
       - if: failure()
         run: cat host.log
       - if: always()

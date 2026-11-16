@@ -10,7 +10,9 @@
     "seed": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/seed/main.js",
     "db:hash": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/seed/hash.js",
     "start": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/main.js",
-    "check:access": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/check-access.js"
+    "check:access": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/check-access.js",
+    "export:spec": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/export-spec.js",
+    "test:e2e": "tsc -p tsconfig.build.json && vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "12.5.0",
@@ -25,5 +27,9 @@
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/supertest": "7.2.1",
+    "supertest": "7.3.2"
   }
 }
