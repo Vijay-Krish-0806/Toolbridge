@@ -61,3 +61,13 @@ export class ShipmentDto {
 }
 
 export class ShipmentPage extends PageOf(ShipmentDto) {}
+
+export class CreateShipmentDto {
+  @ApiProperty({ description: 'Id of a paid order to ship.' })
+  @IsMongoId()
+  orderId!: string;
+
+  @ApiProperty({ enum: CARRIERS, example: 'ups' })
+  @IsIn(CARRIERS)
+  carrier!: Carrier;
+}

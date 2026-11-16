@@ -2,6 +2,8 @@ import { applyDecorators } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -16,10 +18,14 @@ interface EndpointOptions {
   description: string;
   ok: new () => unknown;
   isArray?: boolean;
+  /** true for endpoints that create a record: documents 201 Created instead of 200 OK. */
+  created?: boolean;
   /** Omit to allow every signed-in role. */
   roles?: Role[];
   /** Describe when the endpoint returns 404. */
   notFound?: string;
+  /** Describe when the endpoint returns 409 (the record is in the wrong state for this action). */
+  conflict?: string;
   public?: boolean;
 }
 
@@ -29,15 +35,17 @@ interface EndpointOptions {
  * ToolBridge reads these descriptions later, so they are written for an agent as much as a person.
  */
 export function Endpoint(options: EndpointOptions) {
-  const { summary, description, ok, isArray, roles, notFound } = options;
+  const { summary, description, ok, isArray, roles, notFound, conflict } = options;
   const access = options.public
     ? 'No login needed.'
     : `Allowed roles: ${roles ? roles.join(', ') : 'any signed-in staff role'}.`;
 
   const decorators = [
     ApiOperation({ summary, description: `${description}\n\n${access}` }),
-    ApiOkResponse({ type: ok, isArray }),
-    ApiBadRequestResponse({ description: 'A query or path parameter is invalid.' }),
+    options.created
+      ? ApiCreatedResponse({ type: ok, isArray })
+      : ApiOkResponse({ type: ok, isArray }),
+    ApiBadRequestResponse({ description: 'A parameter or the request body is invalid.' }),
   ];
   if (options.public) {
     decorators.push(Public());
@@ -56,5 +64,6 @@ export function Endpoint(options: EndpointOptions) {
     );
   }
   if (notFound) decorators.push(ApiNotFoundResponse({ description: notFound }));
+  if (conflict) decorators.push(ApiConflictResponse({ description: conflict }));
   return applyDecorators(...decorators);
 }

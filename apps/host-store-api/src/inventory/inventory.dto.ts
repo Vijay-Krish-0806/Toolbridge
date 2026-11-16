@@ -1,5 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsIn, IsMongoId, IsOptional } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsMongoId,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+  NotEquals,
+} from 'class-validator';
 import { PageOf, PageQuery, ToBoolean } from '../common/query.js';
 import { WAREHOUSES, type Warehouse } from '../domain/inventory.schema.js';
 
@@ -65,4 +77,35 @@ export class ProductStockDto {
 
   @ApiProperty({ type: [InventoryDto] })
   warehouses!: InventoryDto[];
+}
+
+export class AdjustStockDto {
+  @ApiProperty({ description: 'Product id.' })
+  @IsMongoId()
+  productId!: string;
+
+  @ApiProperty({ enum: WAREHOUSES, example: 'east' })
+  @IsIn(WAREHOUSES)
+  warehouse!: Warehouse;
+
+  @ApiProperty({
+    description:
+      'Units to add (positive) or remove (negative), -10000 to 10000, not 0. On-hand stock ' +
+      'can never drop below the units reserved for open orders.',
+    example: -3,
+  })
+  @IsInt()
+  @Min(-10_000)
+  @Max(10_000)
+  @NotEquals(0)
+  delta!: number;
+
+  @ApiProperty({
+    description: 'Why the count changed. Kept in the audit log.',
+    example: 'Damaged in storage.',
+  })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
 }

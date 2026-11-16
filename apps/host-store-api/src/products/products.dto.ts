@@ -1,6 +1,19 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 import { PageOf, PageQuery, ToBoolean } from '../common/query.js';
 
 export const PRODUCT_CATEGORIES = ['electronics', 'home', 'outdoor', 'apparel', 'fitness'] as const;
@@ -68,3 +81,133 @@ export class ProductDto {
 }
 
 export class ProductPage extends PageOf(ProductDto) {}
+
+export class CreateProductDto {
+  @ApiProperty({ description: 'Unique SKU: "SKU-" and at least four digits.', example: 'SKU-0500' })
+  @Matches(/^SKU-\d{4,}$/i)
+  sku!: string;
+
+  @ApiProperty({ example: 'Travel Mug' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name!: string;
+
+  @ApiProperty({ enum: PRODUCT_CATEGORIES, example: 'home' })
+  @IsIn(PRODUCT_CATEGORIES)
+  category!: string;
+
+  @ApiProperty({ example: 'Insulated travel mug from our home range.' })
+  @IsString()
+  @MaxLength(1000)
+  description!: string;
+
+  @ApiProperty({ description: 'Price in cents.', example: 1999 })
+  @IsInt()
+  @Min(1)
+  priceCents!: number;
+}
+
+export class UpdateProductDto {
+  @ApiPropertyOptional({ example: 'Travel Mug XL' })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'New price in cents.', example: 2499 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  priceCents?: number;
+
+  @ApiPropertyOptional({ description: 'false = discontinue: no new orders.' })
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+}
+
+export class BulkPriceUpdateDto {
+  @ApiPropertyOptional({
+    enum: PRODUCT_CATEGORIES,
+    description: 'Change every product in this category. Give category OR skus, not both.',
+  })
+  @IsOptional()
+  @IsIn(PRODUCT_CATEGORIES)
+  category?: string;
+
+  @ApiPropertyOptional({
+    type: [String],
+    description: 'Change exactly these SKUs (1 to 200). Give category OR skus, not both.',
+    example: ['SKU-0001', 'SKU-0002'],
+  })
+  @IsOptional()
+  @IsString({ each: true })
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  skus?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Percent change, -90 to 500. 10 raises prices by 10%. Give changePercent OR setPriceCents.',
+    example: 10,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(-90)
+  @Max(500)
+  changePercent?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Set every matched product to this price in cents. Give changePercent OR setPriceCents.',
+    example: 1999,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  setPriceCents?: number;
+
+  @ApiPropertyOptional({
+    description: 'true (default) only previews the changes. Send false to apply them.',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  dryRun = true;
+}
+
+export class PriceChangeDto {
+  @ApiProperty({ example: 'SKU-0001' })
+  sku!: string;
+
+  @ApiProperty({ example: 'Travel Gloves' })
+  name!: string;
+
+  @ApiProperty({ example: 1999 })
+  oldPriceCents!: number;
+
+  @ApiProperty({ example: 2199 })
+  newPriceCents!: number;
+}
+
+export class BulkPriceUpdateResultDto {
+  @ApiProperty({ description: 'true = nothing was changed; this is a preview.' })
+  dryRun!: boolean;
+
+  @ApiProperty({ description: 'Products matched by the filter.', example: 24 })
+  matched!: number;
+
+  @ApiProperty({ description: 'Products whose price changes (or would change).', example: 24 })
+  changed!: number;
+
+  @ApiProperty({ type: [PriceChangeDto], description: 'Up to the first 50 changes, by SKU.' })
+  changes!: PriceChangeDto[];
+}

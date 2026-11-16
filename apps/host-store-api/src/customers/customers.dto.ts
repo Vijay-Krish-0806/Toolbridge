@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, Length, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsIn,
+  IsOptional,
+  IsString,
+  Length,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
 import { PageOf, PageQuery } from '../common/query.js';
 import { CUSTOMER_TIERS, type CustomerTier } from '../domain/customer.schema.js';
 
@@ -70,3 +79,52 @@ export class CustomerDto {
 }
 
 export class CustomerPage extends PageOf(CustomerDto) {}
+
+export class AddressInputDto {
+  @ApiProperty({ example: '12 Oak St' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  line1!: string;
+
+  @ApiProperty({ example: 'Austin' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(100)
+  city!: string;
+
+  @ApiProperty({ example: '73301' })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(20)
+  postalCode!: string;
+
+  @ApiProperty({ description: 'Two-letter country code.', example: 'US' })
+  @IsString()
+  @Length(2, 2)
+  country!: string;
+}
+
+export class UpdateCustomerDto {
+  @ApiPropertyOptional({ example: '+1-555-0199' })
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(30)
+  phone?: string;
+
+  @ApiPropertyOptional({ type: AddressInputDto, description: 'Replaces the whole address.' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AddressInputDto)
+  address?: AddressInputDto;
+
+  @ApiPropertyOptional({
+    description: 'Replaces the notes. Empty string clears them.',
+    maxLength: 1000,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
+}

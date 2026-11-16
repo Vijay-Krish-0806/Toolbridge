@@ -8,6 +8,7 @@ import { CARRIERS, type Shipment } from '../domain/shipment.schema.js';
 import type { Role, User } from '../domain/user.schema.js';
 import { createHash } from 'node:crypto';
 import { hashPassword } from '../auth/password.js';
+import { couponDiscountCents } from '../domain/pricing.js';
 import { seedObjectId } from './ids.js';
 import { createRng, type Rng } from './random.js';
 
@@ -145,6 +146,7 @@ export function generateDataset(staffPassword: string, seed: number = DEFAULT_SE
   const customers = generateCustomers(rng);
   const coupons = generateCoupons();
   const { orders, shipments } = generateOrdersAndShipments(rng, customers, products, coupons);
+  reserveStockForOpenOrders(inventory, orders);
   const refunds = generateRefunds(rng, orders, shipments);
   const injectionTargets = plantInjectionNotes(rng, customers, orders);
 
@@ -216,17 +218,34 @@ function generateInventory(rng: Rng, products: Product[]): Inventory[] {
   let counter = 0;
   return products.flatMap((product) =>
     WAREHOUSES.map((warehouse) => {
-      const onHand = rng.int(0, 200);
       return {
         _id: seedObjectId('inventory', ++counter, product.createdAt),
         productId: product._id,
         warehouse,
-        onHand,
-        reserved: rng.int(0, Math.min(onHand, 20)),
+        onHand: rng.int(0, 200),
+        reserved: 0, // filled in by reserveStockForOpenOrders
         reorderLevel: 20,
       };
     }),
   );
+}
+
+/**
+ * Makes stock agree with orders: "reserved" equals the units of pending and paid orders in each
+ * warehouse, and on-hand stock is never below that. Cancelling or shipping a seeded order then
+ * releases exactly what it reserved.
+ */
+function reserveStockForOpenOrders(inventory: Inventory[], orders: Order[]): void {
+  const rows = new Map(
+    inventory.map((row) => [`${row.productId.toHexString()}:${row.warehouse}`, row]),
+  );
+  for (const order of orders.filter((o) => o.status === 'pending' || o.status === 'paid')) {
+    for (const item of order.items) {
+      const row = rows.get(`${item.productId.toHexString()}:${order.warehouse}`);
+      if (row) row.reserved += item.quantity;
+    }
+  }
+  for (const row of inventory) row.onHand = Math.max(row.onHand, row.reserved);
 }
 
 function generateCustomers(rng: Rng): Customer[] {
@@ -348,12 +367,6 @@ function generateCoupons(): Coupon[] {
   }));
 }
 
-function discountFor(coupon: Coupon, subtotalCents: number): number {
-  return coupon.kind === 'percent'
-    ? Math.floor((subtotalCents * coupon.value) / 100)
-    : Math.min(coupon.value, subtotalCents);
-}
-
 function generateOrdersAndShipments(
   rng: Rng,
   customers: Customer[],
@@ -392,7 +405,7 @@ function generateOrdersAndShipments(
     );
     const coupon = usable.length > 0 && rng.chance(0.2) ? rng.pick(usable) : null;
     if (coupon) coupon.timesUsed++;
-    const discountCents = coupon ? discountFor(coupon, subtotalCents) : 0;
+    const discountCents = coupon ? couponDiscountCents(coupon, subtotalCents) : 0;
 
     // Status follows from the order's age, so dates and statuses always agree:
     //   0-1 days: pending or paid | 2-7 days: in transit, not yet due | 8+ days: delivered
@@ -440,7 +453,12 @@ function generateOrdersAndShipments(
       discountCents,
       totalCents: subtotalCents - discountCents,
       couponCode: coupon?.code ?? null,
+      warehouse: rng.pick(WAREHOUSES),
+      refundCommittedCents: 0, // filled in by generateRefunds
       notes: rng.chance(0.1) ? rng.pick(BENIGN_ORDER_NOTES) : '',
+      cancellation: isCancelled
+        ? { by: null, reason: 'Customer asked to cancel.', at: daysAfter(placedAt, 0.1) }
+        : null,
       placedAt,
     };
     orders.push(order);
@@ -474,7 +492,7 @@ function generateRefunds(rng: Rng, orders: Order[], shipments: Shipment[]): Refu
     .shuffle(byTotal.slice(COUNTS.largeRefunds))
     .slice(0, COUNTS.refunds - COUNTS.largeRefunds);
 
-  return [...large, ...others].map((order, i) => {
+  const refunds: Refund[] = [...large, ...others].map((order, i) => {
     const isLarge = i < COUNTS.largeRefunds;
     const deliveredAt = deliveredAtByOrder.get(order._id.toHexString()) ?? REFERENCE_NOW;
     const requestedAt = notAfter(
@@ -500,9 +518,20 @@ function generateRefunds(rng: Rng, orders: Order[], shipments: Shipment[]): Refu
       reason: rng.pick(REFUND_REASONS),
       status,
       requestedAt,
+      requestedBy: null,
       processedAt: status === 'pending' ? null : notAfter(daysAfter(requestedAt, 1), REFERENCE_NOW),
+      processedBy: null,
+      decisionNote: null,
     };
   });
+
+  // Pending and completed refunds count against the order; rejected ones do not.
+  const orderById = new Map(orders.map((o) => [o._id.toHexString(), o]));
+  for (const refund of refunds.filter((r) => r.status !== 'rejected')) {
+    const order = orderById.get(refund.orderId.toHexString());
+    if (order) order.refundCommittedCents += refund.amountCents;
+  }
+  return refunds;
 }
 
 function plantInjectionNotes(rng: Rng, customers: Customer[], orders: Order[]): InjectionTarget[] {

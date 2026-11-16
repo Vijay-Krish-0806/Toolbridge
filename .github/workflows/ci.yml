@@ -40,5 +40,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm seed
+      # Access check: start the API, then call every operation as every role and compare with the spec.
+      - run: pnpm start:host > host.log 2>&1 &
+      - run: curl --silent --fail --retry 60 --retry-connrefused --retry-all-errors --retry-delay 1 http://127.0.0.1:3000/health
+      - run: pnpm check:access
+      - if: failure()
+        run: cat host.log
       - if: always()
         run: docker compose --env-file .env -f infra/docker-compose.yml down -v

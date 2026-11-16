@@ -1,12 +1,14 @@
 import { Module, type DynamicModule } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
+import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { TOKEN_TTL_SECONDS } from './auth/auth.service.js';
 import { CoreModule } from './common/core.module.js';
 import type { HostConfig } from './config.js';
 import { CouponsModule } from './coupons/coupons.module.js';
 import { CustomersModule } from './customers/customers.module.js';
+import { FormsModule } from './forms/forms.module.js';
 import { HealthController } from './health/health.controller.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { OrdersModule } from './orders/orders.module.js';
@@ -30,6 +32,7 @@ export class AppModule {
           secret: config.JWT_SECRET,
           signOptions: { expiresIn: TOKEN_TTL_SECONDS },
         }),
+        AuditModule,
         AuthModule,
         ProductsModule,
         InventoryModule,
@@ -39,6 +42,7 @@ export class AppModule {
         RefundsModule,
         CouponsModule,
         ReportsModule,
+        FormsModule,
       ],
       controllers: [HealthController],
     };

@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "seed": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/seed/main.js",
     "db:hash": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/seed/hash.js",
-    "start": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/main.js"
+    "start": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/main.js",
+    "check:access": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/check-access.js"
   },
   "dependencies": {
     "@nestjs/common": "12.5.0",
