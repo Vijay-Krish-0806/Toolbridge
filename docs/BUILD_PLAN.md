@@ -25,7 +25,22 @@ Prepared for Vijay. This is the step-by-step build spec to hand to Claude Code. 
 
 **If you fall behind, cut in this order:** 6.3, 7.4, U4, 4.7, 4.8, 3.4, 4.6. Never cut 4.2 (RBAC), 4.3 (approvals), 4.5 (idempotency), 4.9 (injection defense), or Phase 5 (evals).
 
-**Cost guard:** set a monthly spend cap on the API key before Step 1.1. Read the model name from an environment variable and default to a cheaper model while developing. Enable prompt caching for tool definitions. Tests use the fake provider, so they cost nothing. Never commit keys.
+**Cost guard:** local-only, no API keys and no paid services. Every model runs on your laptop through Ollama, reached through an OpenAI-compatible adapter. Read the provider, base URL, and model name from environment variables. Tests use the fake provider, so they need no model at all. Never commit keys. If you ever add a hosted provider later, it plugs in behind the same `LLMProvider` port, and you set a spend cap first.
+
+**Local model choice (checked 2026-11-16 on ollama.com, re-check when you start Step 1.1):**
+
+| Role | Model (Ollama tag) | Download | Why |
+| --- | --- | --- | --- |
+| Default chat and tools | `qwen3.5:4b` | 3.3 to 4.0 GB | Tagged tools and thinking, 256K max context. The 4B size is the largest that sits mostly on a 4 GB GPU. |
+| Stronger, slower comparison | `qwen3.5:9b` | 6.6 to 7.6 GB | Same family, so the comparison is fair. It spills into system RAM, so use it for eval comparisons, not daily development. |
+| Fallback if Qwen3.5 misbehaves | `qwen3:4b` | 2.5 GB | The previous generation, smaller and widely used for local tool calling. |
+| Embeddings | `qwen3-embedding:0.6b` | 639 MB | 32K context, so a whole tool description fits. Output dimensions are configurable from 32 up. |
+
+**Why not Kimi or DeepSeek:** they are excellent open-weight models but far too large for this laptop. Kimi K2 has 1 trillion parameters (and was retired from Ollama's library in June 2026), and DeepSeek V3.1 is a 404 GB download. Ollama's cloud does host newer Kimi and DeepSeek versions, but its $0 plan is pay per token, so it is not free. Small Qwen models are the practical open choice at this hardware size.
+
+**Context window (important):** on machines with less than 24 GiB VRAM, Ollama defaults to only 4K tokens of context and silently drops anything older. Tool definitions plus results overflow that quickly. The OpenAI-compatible endpoint cannot set context size per request, so set it on the server (`OLLAMA_CONTEXT_LENGTH`) or bake `num_ctx` into a Modelfile. Ollama recommends at least 64K for agents. On a 4 GB GPU, a bigger context costs memory and speed, so start at 16K to 32K and measure in Step 1.4.
+
+**Other local limits to design around:** the OpenAI-compatible endpoint does not support `tool_choice`, so you cannot force a tool call; the loop must handle a plain text answer at any step. Small models make more malformed tool calls than frontier models, so validate every call with Zod, return the error to the model, and cap retries. Tight tool descriptions and Phase 3 tool retrieval matter even more here. Keep Docker services lean (start n8n and Langfuse only when their phase begins), because MongoDB, Redis, the model, and your editor all share 16 GB.
 
 **Pace:** with Claude Code writing the code, aim for one phase every 1 to 2 weeks. Your review and learning time is the bottleneck, not typing.
 
@@ -64,19 +79,19 @@ Only include article links that Claude Code has actually opened. No guessed URLs
 | Database | MongoDB with Atlas Vector Search | You know it, and it keeps documents and vectors in one store. | PostgreSQL with pgvector: better transactions and relational integrity, and arguably the stronger production default. Worth a comparison ADR. |
 | Queue and cache | Redis with BullMQ | Simple, proven job queues with retries and delayed jobs. Redis also covers caching and rate limits. | Temporal (most robust durable execution, heavy), Inngest, Trigger.dev |
 | Agent orchestration | LangGraph.js, after a raw loop | State machine with checkpointing and interrupts, which suits approvals. You build the raw loop first so you know what it replaces. | Vercel AI SDK, Mastra, or no framework at all |
-| LLM access | Anthropic API via the official SDK, behind your own `LLMProvider` interface | The interface keeps you provider-independent and makes testing with a fake provider easy. | Any other provider through the same interface |
+| LLM access | Ollama running `qwen3.5:4b` locally, through an OpenAI-compatible adapter behind your own `LLMProvider` interface | Free, private, and offline. The OpenAI-compatible API is the most widely copied format, so the adapter also works with other local servers. The interface keeps you provider-independent and makes testing with a fake provider easy. | LM Studio or llama.cpp server (same API shape), Ollama's native `/api/chat`, or a hosted provider later through the same interface |
 | MCP | Official TypeScript MCP SDK | The reference implementation. | None needed |
 | OpenAPI parsing | swagger-parser, openapi-types | Reliable `$ref` dereferencing for 3.x specs. | openapi-typescript for generated types |
 | Validation | Zod, zod-to-json-schema | One schema language for runtime validation and tool schemas. | Ajv |
-| Embeddings | Behind an `EmbeddingProvider` interface | Anthropic offers no embedding model of its own. Voyage AI is commonly paired with Claude, and OpenAI or a local model through Ollama also work. Check current options when you reach Phase 3. | Any |
-| Observability | Langfuse (self-hosted in Docker), Pino logs | Open-source LLM tracing with datasets and scores. | OpenTelemetry with another backend, LangSmith |
+| Embeddings | `qwen3-embedding:0.6b` on Ollama, behind an `EmbeddingProvider` interface | Local and free. Its 32K context fits whole tool descriptions, and it is small enough to load next to the chat model. | `nomic-embed-text` or `embeddinggemma` (smaller, but only 2K context) |
+| Observability | Langfuse, Pino logs | Open-source LLM tracing with datasets and scores. Self-hosting may be too heavy for 16 GB (see Step 5.3). | OpenTelemetry with another backend, your own audit log |
 | Evals | Custom TypeScript runner on Vitest | Full control over scoring and CI gating. | promptfoo, Langfuse datasets |
 | Frontend | Next.js, Tailwind, shadcn/ui, SWR | Your strength, so it costs little time. Streaming works through SSE. | Vite and React |
 | Testing | Vitest, Supertest, Testcontainers | Fast unit tests and real-database integration tests. | Jest |
 | Infra | Docker Compose, GitHub Actions | Everything runs locally with one command. | Kubernetes only later, and only if justified |
 | Workflows | n8n (primary), Dify (comparison) | Event-driven automations around the agent API. | Zapier-style tools |
 
-**Rule for Claude Code:** before installing any library or using a framework API, check the current official docs and latest stable versions. LangGraph, MCP, and the Anthropic SDK change quickly, so do not rely on memory for exact APIs.
+**Rule for Claude Code:** before installing any library or using a framework API, check the current official docs and latest stable versions. LangGraph, MCP, Ollama, and the OpenAI SDK change quickly, so do not rely on memory for exact APIs.
 
 ## 3. Architecture
 
@@ -145,13 +160,13 @@ Each step lists what to **Do**, what to **Learn**, and when it is **Done**.
 
 ### Phase 1: Raw tool-calling loop (`packages/agent-core`)
 
-**Step 1.1: LLM port** Do: an `LLMProvider` interface (generate and stream), message and tool-call types, an Anthropic adapter, env-based config, and a fake provider for tests. Learn: ports and adapters, the tool-use message format. Done: unit tests pass with the fake provider, and one real call works.
+**Step 1.1: LLM port** Do: an `LLMProvider` interface (generate and stream), message and tool-call types, an OpenAI-compatible adapter pointed at Ollama, env-based config (base URL, model, context length), a fake provider for tests, and ADR 0003 on going local-only. Before writing the adapter, run a quick smoke test: confirm `qwen3.5:4b` returns a well-formed tool call through `/v1/chat/completions`, both streamed and not streamed. Learn: ports and adapters, the tool-use message format, and what an OpenAI-compatible API is. Done: unit tests pass with the fake provider, and one real tool-calling round trip works against the local model.
 
 **Step 1.2: Tools and executor** Do: a `Tool` interface (name, description, Zod schema, safety class), a registry, five hand-written tools calling the host API (list orders, get order, get customer, list products, issue refund), and an executor with timeouts, backoff retries, and normalized errors. Learn: tool design, and why errors go back to the model as results. Done: each tool tested against the local host API.
 
-**Step 1.3: Agent loop and CLI** Do: a framework-free loop (call model, run tool calls in parallel when independent, append results, repeat) with a max-iteration guard, token accounting, and a CLI chat. Learn: the ReAct-style loop and stop conditions. Done: it answers a three-call chained question and recovers from a tool error.
+**Step 1.3: Agent loop and CLI** Do: a framework-free loop (call model, run tool calls in parallel when independent, append results, repeat) with a max-iteration guard, token accounting, and a CLI chat. Small models often emit one tool call at a time, so the loop must work either way. Malformed tool calls are returned to the model as errors, with a retry cap. Learn: the ReAct-style loop and stop conditions. Done: it answers a three-call chained question and recovers from a tool error.
 
-**Step 1.4: Streaming, logging, failure lab** Do: stream tokens and tool events. Add structured Pino logs keyed by run id. Deliberately trigger an oversized result and a paginated result, then add truncation and result shaping. Learn: context window pressure. Done: failures and fixes are written up in the learning log.
+**Step 1.4: Streaming, logging, failure lab** Do: stream tokens and tool events. Add structured Pino logs keyed by run id. Deliberately trigger an oversized result and a paginated result, then add truncation and result shaping. Measure speed and memory at two or three context lengths (for example 8K, 16K, 32K) and pick a default. Learn: context window pressure, and why a local model's context is a memory budget. Done: failures and fixes are written up in the learning log.
 
 ### Phase 2: Spec compiler and MCP
 
@@ -163,7 +178,7 @@ Each step lists what to **Do**, what to **Learn**, and when it is **Done**.
 
 **Step 2.4: Spec cache and versioning** Do: hash specs, cache compiled tools by hash, and diff two spec versions (added, removed, changed operations, with a breaking flag). Learn: content-addressed caching. Done: unchanged specs skip recompilation, and diffs are tested.
 
-**Step 2.5: MCP server (`packages/mcp-server`)** Do: expose compiled tools with the official SDK over stdio and streamable HTTP, annotating write tools. Test with the MCP Inspector and Claude Desktop. Learn: MCP architecture (host, client, server) and tools versus resources versus prompts. Done: Claude Desktop can operate the host app through your server.
+**Step 2.5: MCP server (`packages/mcp-server`)** Do: expose compiled tools with the official SDK over stdio and streamable HTTP, annotating write tools. Test with the MCP Inspector, then connect one real MCP client (for example Claude Desktop, or a local-model client; check current free options when you get here). Learn: MCP architecture (host, client, server) and tools versus resources versus prompts. Done: the Inspector can list and call every tool, and one MCP client can operate the host app through your server.
 
 **Step 2.6: Platform API (`apps/toolbridge-api`)** Do: tenants, spec upload or URL registration, credential storage encrypted at rest (envelope encryption), and endpoints to list and enable or disable tools. Learn: multi-tenancy models and secrets handling. Done: a test proves two tenants cannot see each other's specs or tools.
 
@@ -191,7 +206,7 @@ Each step lists what to **Do**, what to **Learn**, and when it is **Done**.
 
 **Step 4.5: Reliability** Do: idempotency keys on write tools with stored results, retry policy by tool class (retry reads, never blindly retry writes), a circuit breaker, and a Redis token-bucket rate limiter per tenant. Learn: idempotency and failure modes of retries. Done: kill a worker between a side effect and its acknowledgement, and no duplicate refund occurs.
 
-**Step 4.6: Budgets** Do: token and cost accounting per run and tenant, caps with a graceful stop, and a usage endpoint. Done: a run stops cleanly at its cap.
+**Step 4.6: Budgets** Do: token accounting per run and tenant, with cost derived from a configurable price table (zero for local models, so the same code works if a paid provider is added later). Add token caps with a graceful stop, and a usage endpoint. Learn: budgets as a safety limit, not only a billing feature. Done: a run stops cleanly at its cap.
 
 **Step 4.7: Memory** Do: conversation trimming and summarization, and a long-term user memory store with expiry. Done: long conversations stay within context.
 
@@ -203,7 +218,7 @@ Each step lists what to **Do**, what to **Learn**, and when it is **Done**.
 
 ### Phase 5: Evals and tracing (`evals/`)
 
-**Step 5.1: Dataset.** 50 cases in JSON: question, role, expected tool sequence, outcome assertions, and tags (multi-step, ambiguous, forbidden, injection, no-data). **Step 5.2: Runner and scoring.** Reset host state per case. Score tool-selection accuracy, argument correctness, task success, step count, cost, and latency. Use an LLM judge only for free-text answers, with a rubric, and compare it to manual checks on a sample. **Step 5.3: Tracing.** Self-host Langfuse and trace every run by run id. **Step 5.4: CI gate.** Fail the build when scores drop below thresholds, and store result history. **Step 5.5: Improvement loop.** Make three measured improvements with before and after numbers. Learn: eval design, and why anecdotal testing misleads. Done: the README results table is generated from real runs.
+**Step 5.1: Dataset.** 50 cases in JSON: question, role, expected tool sequence, outcome assertions, and tags (multi-step, ambiguous, forbidden, injection, no-data). **Step 5.2: Runner and scoring.** Reset host state per case. Score tool-selection accuracy, argument correctness, task success, step count, tokens, and latency, and report every score per model (`qwen3.5:4b` versus `qwen3.5:9b`). Prefer deterministic checks (tool sequence, database state) over an LLM judge. Use a judge only for free-text answers, with a rubric, run it on the 9B model, and check it by hand on a larger sample because small judges are unreliable. **Step 5.3: Tracing.** Trace every run by run id with Langfuse. Self-hosting runs several containers and may be too heavy for a 16 GB laptop next to the model, so check its current requirements first. If it is too heavy, use a lighter local trace store (your own audit log plus OpenTelemetry) and keep the same run ids. **Step 5.4: CI gate.** CI runners have no GPU, so CI cannot run the local model. Use record and replay: run the real eval suite on your laptop, save the model responses as fixtures, and have CI replay them and score the results. CI then catches regressions in your code (compiler, policy, executor). Re-record locally when you change prompts or models. Fail the build when scores drop below thresholds, store result history, and write an ADR on this choice. Learn: record and replay testing, and what it can and cannot catch. **Step 5.5: Improvement loop.** Make three measured improvements with before and after numbers. Learn: eval design, and why anecdotal testing misleads. Done: the README results table is generated from real runs.
 
 ### Phase 6: Workflows
 
