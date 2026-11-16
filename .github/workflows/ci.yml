@@ -32,5 +32,13 @@ jobs:
       - run: cp .env.example .env
       - run: docker compose --env-file .env -f infra/docker-compose.yml up -d --wait --wait-timeout 180
       - run: docker compose --env-file .env -f infra/docker-compose.yml ps
+      # Smoke check: the seed must run cleanly (schema validation and unique indexes) against real MongoDB.
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm seed
       - if: always()
         run: docker compose --env-file .env -f infra/docker-compose.yml down -v

@@ -3,9 +3,9 @@
 Source: section 4 of `docs/BUILD_PLAN.md`. The workspace rules in `../CLAUDE.md` also apply.
 
 - Read `docs/BUILD_PLAN.md` and work only on the step I name. Do not start the next step.
-- Before coding, post a short plan: files to create or change, interfaces, and tests. Wait for my go-ahead on anything that changes architecture.
+- Before coding, post a short plan: files to create or change, interfaces, and how we will verify it. Wait for my go-ahead on anything that changes architecture.
 - Keep code simple and typed. Prefer small modules with one responsibility. No dead code or speculative abstractions.
-- Write tests alongside code. A step is not done until its acceptance checks pass.
+- Do not write test files by default. Write a test only when it is really necessary (security, money, data integrity, or an acceptance check that cannot be shown by running commands), and say why. Otherwise verify by running the app, seed or scripts, and list the exact commands so I can re-run them. A step is not done until its acceptance checks pass.
 - Check current official docs and versions before adding dependencies or using fast-moving APIs. Justify every new dependency in one line.
 - Never commit secrets. Use `.env.example` and validate config at startup.
 - Record each non-trivial decision as an ADR in `docs/adr/` with alternatives considered.

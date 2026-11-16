@@ -11,6 +11,8 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "seed": "pnpm --filter @toolbridge/host-store-api seed",
+    "db:hash": "pnpm --filter @toolbridge/host-store-api db:hash",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "infra:up": "docker compose --env-file .env -f infra/docker-compose.yml up -d --wait",

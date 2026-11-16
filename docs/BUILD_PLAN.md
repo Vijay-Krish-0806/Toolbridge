@@ -130,9 +130,9 @@ docs/                  # BUILD_PLAN.md, adr/, learning-log.md, architecture.md
 ## 4. Rules for Claude Code (copy into CLAUDE.md)
 
 - Read `docs/BUILD_PLAN.md` and work only on the step I name. Do not start the next step.
-- Before coding, post a short plan: files to create or change, interfaces, and tests. Wait for my go-ahead on anything that changes architecture.
+- Before coding, post a short plan: files to create or change, interfaces, and how we will verify it. Wait for my go-ahead on anything that changes architecture.
 - Keep code simple and typed. Prefer small modules with one responsibility. No dead code or speculative abstractions.
-- Write tests alongside code. A step is not done until its acceptance checks pass.
+- Do not write test files by default. Write a test only when it is really necessary (security, money, data integrity, or an acceptance check that cannot be shown by running commands), and say why. Otherwise verify by running the app, seed or scripts, and list the exact commands so I can re-run them. A step is not done until its acceptance checks pass.
 - Check current official docs and versions before adding dependencies or using fast-moving APIs. Justify every new dependency in one line.
 - Never commit secrets. Use `.env.example` and validate config at startup.
 - Record each non-trivial decision as an ADR in `docs/adr/` with alternatives considered.
@@ -160,7 +160,7 @@ Each step lists what to **Do**, what to **Learn**, and when it is **Done**.
 
 ### Phase 1: Raw tool-calling loop (`packages/agent-core`)
 
-**Step 1.1: LLM port** Do: an `LLMProvider` interface (generate and stream), message and tool-call types, an OpenAI-compatible adapter pointed at Ollama, env-based config (base URL, model, context length), a fake provider for tests, and ADR 0003 on going local-only. Before writing the adapter, run a quick smoke test: confirm `qwen3.5:4b` returns a well-formed tool call through `/v1/chat/completions`, both streamed and not streamed. Learn: ports and adapters, the tool-use message format, and what an OpenAI-compatible API is. Done: unit tests pass with the fake provider, and one real tool-calling round trip works against the local model.
+**Step 1.1: LLM port** Do: an `LLMProvider` interface (generate and stream), message and tool-call types, an OpenAI-compatible adapter pointed at Ollama, env-based config (base URL, model, context length), a fake provider for tests, and an ADR on going local-only. Before writing the adapter, run a quick smoke test: confirm `qwen3.5:4b` returns a well-formed tool call through `/v1/chat/completions`, both streamed and not streamed. Learn: ports and adapters, the tool-use message format, and what an OpenAI-compatible API is. Done: unit tests pass with the fake provider, and one real tool-calling round trip works against the local model.
 
 **Step 1.2: Tools and executor** Do: a `Tool` interface (name, description, Zod schema, safety class), a registry, five hand-written tools calling the host API (list orders, get order, get customer, list products, issue refund), and an executor with timeouts, backoff retries, and normalized errors. Learn: tool design, and why errors go back to the model as results. Done: each tool tested against the local host API.
 
@@ -241,8 +241,8 @@ Build each screen only when its backend exists. Use shadcn/ui and let Claude Cod
 
 ```
 Read CLAUDE.md and docs/BUILD_PLAN.md. We are doing Step X.Y only.
-1. Post a short plan: files, interfaces, tests, and any decision that needs an ADR.
-2. Wait for my approval, then implement it with tests.
+1. Post a short plan: files, interfaces, verification commands (tests only where really necessary), and any decision that needs an ADR.
+2. Wait for my approval, then implement it and show the commands you ran.
 3. Run the acceptance checks and show me the results.
 4. Finish with: what changed, how to run it, what I should learn from it, a learning note written to the inbox (section 1.2),
    shortcuts taken, and 3 questions to check my understanding.

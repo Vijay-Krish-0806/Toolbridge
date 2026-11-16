@@ -1,0 +1,17 @@
+{
+  "name": "@toolbridge/host-store-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "seed": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/seed/main.js",
+    "db:hash": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/seed/hash.js"
+  },
+  "dependencies": {
+    "mongoose": "9.12.1",
+    "zod": "4.6.7"
+  }
+}
