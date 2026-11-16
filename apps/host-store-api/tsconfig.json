@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // NestJS dependency injection and Swagger read TypeScript's decorator metadata.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
   "include": ["src"]
 }

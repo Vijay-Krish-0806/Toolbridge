@@ -14,6 +14,10 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    rules: {
+      // NestJS modules are empty classes on purpose: the @Module() decorator carries the config.
+      '@typescript-eslint/no-extraneous-class': ['error', { allowWithDecorator: true }],
+    },
   },
   prettier,
 );

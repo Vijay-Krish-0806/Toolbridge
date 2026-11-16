@@ -17,6 +17,7 @@ export async function writeDataset(connection: Connection, data: Dataset): Promi
     await model.createIndexes();
   }
 
+  await models.users.insertMany(data.users);
   await models.products.insertMany(data.products);
   await models.inventory.insertMany(data.inventory);
   await models.customers.insertMany(data.customers);

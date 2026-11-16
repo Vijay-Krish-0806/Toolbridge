@@ -8,6 +8,7 @@ const ENTITY_CODE = {
   order: 5,
   shipment: 6,
   refund: 7,
+  user: 8,
 } as const;
 
 export type EntityKind = keyof typeof ENTITY_CODE;

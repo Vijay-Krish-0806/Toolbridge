@@ -10,7 +10,7 @@ if (config.NODE_ENV === 'production') {
   );
 }
 
-const data = generateDataset(DEFAULT_SEED);
+const data = generateDataset(config.SEED_STAFF_PASSWORD, DEFAULT_SEED);
 // autoIndex is off: write.ts builds indexes itself, at a known point, after dropping the database.
 const connection = await mongoose
   .createConnection(config.MONGO_URI, { dbName: config.MONGO_DB, autoIndex: false })
