@@ -1,0 +1,6 @@
+# Qwen3.5 4B with a 16K context window baked in.
+# Ollama's OpenAI-compatible API cannot set context size per request, and on GPUs under 24 GiB
+# Ollama defaults to 4K, silently dropping older tokens. Create with:
+#   ollama create toolbridge-qwen3.5-4b-16k -f infra/ollama/qwen3.5-4b-16k.Modelfile
+FROM qwen3.5:4b
+PARAMETER num_ctx 16384
