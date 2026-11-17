@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "smoke": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/smoke.js",
-    "tools:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/tools-check.js"
+    "tools:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/tools-check.js",
+    "chat": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/chat.js"
   },
   "dependencies": {
     "@toolbridge/shared": "workspace:*",

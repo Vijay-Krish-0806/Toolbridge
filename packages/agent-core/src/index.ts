@@ -15,3 +15,13 @@ export {
 export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/errors.js';
 export { HostApiClient, type HostApiOptions } from './host-api/client.js';
 export { createHostStoreTools } from './host-api/tools.js';
+export {
+  runAgent,
+  type AgentEvent,
+  type AgentLimits,
+  type AgentRunInput,
+  type AgentRunResult,
+  type AgentUsage,
+  type StopReason,
+} from './agent/loop.js';
+export { STORE_AGENT_SYSTEM_PROMPT } from './agent/system-prompt.js';
