@@ -35,3 +35,28 @@ export function loadLLMConfig(env: NodeJS.ProcessEnv = process.env): LLMConfig {
     contextLength: LLM_CONTEXT_LENGTH,
   };
 }
+
+const hostApiEnvSchema = z.object({
+  /** The host store API that the hand-written tools call. */
+  HOST_API_URL: z.url().default('http://127.0.0.1:3000'),
+  /** The staff account the tools act as. Its role decides what the agent may do (403 otherwise). */
+  HOST_API_EMAIL: z.email().default('support@store.example'),
+  /** No default: credentials must be set explicitly. */
+  HOST_API_PASSWORD: z.string().min(1),
+});
+
+export interface HostApiConfig {
+  baseUrl: string;
+  email: string;
+  password: string;
+}
+
+/** Validates the host API settings once at startup, like loadLLMConfig. */
+export function loadHostApiConfig(env: NodeJS.ProcessEnv = process.env): HostApiConfig {
+  const result = hostApiEnvSchema.safeParse(env);
+  if (!result.success) {
+    throw new Error(`Invalid host API configuration:\n${z.prettifyError(result.error)}`);
+  }
+  const { HOST_API_URL, HOST_API_EMAIL, HOST_API_PASSWORD } = result.data;
+  return { baseUrl: HOST_API_URL, email: HOST_API_EMAIL, password: HOST_API_PASSWORD };
+}
