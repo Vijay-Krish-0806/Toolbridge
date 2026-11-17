@@ -70,8 +70,11 @@ export interface GenerateResult {
 /**
  * Events from a streamed generation. Text arrives in pieces. Each tool call arrives once, whole,
  * after the adapter has joined its pieces. `done` always comes last and carries the full result.
+ * `reasoning-delta` is the model's "thinking" text, for display only: it is never part of the
+ * answer and is not sent back to the model.
  */
 export type StreamEvent =
   | { type: 'text-delta'; text: string }
+  | { type: 'reasoning-delta'; text: string }
   | { type: 'tool-call'; toolCall: ToolCall }
   | { type: 'done'; result: GenerateResult };

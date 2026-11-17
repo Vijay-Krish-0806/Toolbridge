@@ -3,7 +3,7 @@
  * append the results, and repeat until it answers in plain text or a limit stops it.
  */
 import type { LLMProvider } from '../llm/provider.js';
-import type { ChatMessage, GenerateResult, ToolCall } from '../llm/types.js';
+import type { ChatMessage, GenerateRequest, GenerateResult, ToolCall } from '../llm/types.js';
 import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
 
@@ -31,8 +31,14 @@ export interface AgentUsage {
   lastInputTokens: number;
 }
 
-/** Progress events, so a UI (the CLI today) can show what the agent is doing as it happens. */
+/**
+ * Progress events, so a UI (the CLI today) can show what the agent is doing as it happens.
+ * `reasoning-delta` and `text-delta` stream while the model writes. `llm-response` follows once
+ * that model call is complete.
+ */
 export type AgentEvent =
+  | { type: 'reasoning-delta'; text: string }
+  | { type: 'text-delta'; text: string }
   | { type: 'llm-response'; iteration: number; result: GenerateResult; durationMs: number }
   | { type: 'tool-start'; call: ToolCall }
   | { type: 'tool-end'; call: ToolCall; result: ToolResult; durationMs: number };
@@ -87,7 +93,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
 
   for (let iteration = 1; iteration <= limits.maxIterations; iteration++) {
     const started = performance.now();
-    const result = await input.llm.generate({ messages, tools });
+    const result = await streamModelTurn(input.llm, { messages, tools }, emit);
     emit({ type: 'llm-response', iteration, result, durationMs: performance.now() - started });
 
     usage.llmCalls++;
@@ -117,6 +123,23 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
     }
   }
   return finish('max_iterations');
+}
+
+/**
+ * Calls the model in streaming mode. Thinking and text pieces are passed on as events the moment
+ * they arrive, so the user sees progress. Returns the complete result from the final `done` event.
+ * Tool calls are not emitted here: the loop runs them once the whole turn is known.
+ */
+async function streamModelTurn(
+  llm: LLMProvider,
+  request: GenerateRequest,
+  emit: (event: AgentEvent) => void,
+): Promise<GenerateResult> {
+  for await (const event of llm.stream(request)) {
+    if (event.type === 'reasoning-delta' || event.type === 'text-delta') emit(event);
+    if (event.type === 'done') return event.result;
+  }
+  throw new Error('Model stream ended without a done event');
 }
 
 /**

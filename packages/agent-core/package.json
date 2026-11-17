@@ -21,6 +21,7 @@
   "dependencies": {
     "@toolbridge/shared": "workspace:*",
     "openai": "7.57.0",
+    "pino": "10.4.0",
     "zod": "4.6.7"
   }
 }

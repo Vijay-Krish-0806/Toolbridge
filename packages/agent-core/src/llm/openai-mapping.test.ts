@@ -184,6 +184,31 @@ describe('ChunkAccumulator', () => {
     ]);
   });
 
+  it("streams Ollama's thinking as reasoning-delta, kept out of the answer", () => {
+    // Shapes copied from the recorded Ollama stream. `reasoning` is not in the SDK's types,
+    // so these are plain variables rather than typed literals.
+    const thinking1 = { role: 'assistant' as const, content: '', reasoning: 'The' };
+    const thinking2 = { content: '', reasoning: ' user' };
+    const events = runStream([
+      chunk(thinking1),
+      chunk(thinking2),
+      chunk({ content: 'Hi.' }, 'stop'),
+    ]);
+
+    expect(events).toEqual([
+      { type: 'reasoning-delta', text: 'The' },
+      { type: 'reasoning-delta', text: ' user' },
+      { type: 'text-delta', text: 'Hi.' },
+      {
+        type: 'done',
+        result: {
+          message: { role: 'assistant', content: 'Hi.', toolCalls: [] },
+          finishReason: 'stop',
+        },
+      },
+    ]);
+  });
+
   it('gives a stable id to a tool call that arrives without one', () => {
     const events = runStream([
       chunk({ tool_calls: [{ index: 0, function: { name: 'list_products', arguments: '{}' } }] }),

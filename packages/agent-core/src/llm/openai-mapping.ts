@@ -120,6 +120,16 @@ function toUsage(usage: { prompt_tokens: number; completion_tokens: number }): U
   return { inputTokens: usage.prompt_tokens, outputTokens: usage.completion_tokens };
 }
 
+/**
+ * Reads the model's thinking text from a streamed delta. `reasoning` is not part of the OpenAI
+ * format: Ollama adds it, so the SDK types don't know it. We check its type at runtime instead
+ * of trusting it. Servers without the field simply return undefined here.
+ */
+function readReasoning(delta: object): string | undefined {
+  const value: unknown = 'reasoning' in delta ? delta.reasoning : undefined;
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
 interface PartialToolCall {
   id: string;
   name: string;
@@ -139,9 +149,9 @@ export class ChunkAccumulator {
 
   /**
    * Takes one streamed chunk and remembers what it carries: text, tool-call pieces,
-   * the finish reason, or usage. Returns only the events that can be sent right away,
-   * which is the text piece, if any. Tool calls wait until `finish()`, because their
-   * arguments may still be incomplete.
+   * the finish reason, or usage. Returns only the events that can be sent right away:
+   * thinking and text pieces. Tool calls wait until `finish()`, because their arguments
+   * may still be incomplete.
    */
   push(chunk: ChatCompletionChunk): StreamEvent[] {
     if (chunk.usage) {
@@ -161,12 +171,15 @@ export class ChunkAccumulator {
       if (delta.function?.arguments) partial.arguments += delta.function.arguments;
       this.partials.set(delta.index, partial);
     }
+    const events: StreamEvent[] = [];
+    const reasoning = readReasoning(choice.delta);
+    if (reasoning) events.push({ type: 'reasoning-delta', text: reasoning });
     const text = choice.delta.content;
     if (text) {
       this.content += text;
-      return [{ type: 'text-delta', text }];
+      events.push({ type: 'text-delta', text });
     }
-    return [];
+    return events;
   }
 
   /**
