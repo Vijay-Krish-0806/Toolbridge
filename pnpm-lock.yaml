@@ -254,6 +254,9 @@ importers:
       '@toolbridge/shared':
         specifier: workspace:*
         version: link:../shared
+      '@toolbridge/spec-compiler':
+        specifier: workspace:*
+        version: link:../spec-compiler
       openai:
         specifier: 7.57.0
         version: 7.57.0(zod@4.6.7)

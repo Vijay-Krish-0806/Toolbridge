@@ -21,6 +21,12 @@ export interface Tool<Schema extends z.ZodType = z.ZodType> {
   description: string;
   safety: SafetyClass;
   input: Schema;
+  /**
+   * The exact JSON Schema to show the model. Optional: when absent, the registry derives it from
+   * `input`. Generated tools set it, because their schema already is JSON Schema and a round trip
+   * through Zod could change it.
+   */
+  parameters?: Record<string, unknown>;
   /** Runs the tool with already-validated input. Its return value is sent to the model as JSON. */
   execute(input: z.output<Schema>, context: ToolContext): Promise<unknown>;
 }

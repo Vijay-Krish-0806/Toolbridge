@@ -5,6 +5,7 @@ export type ToolErrorCode =
   | 'timeout' // the tool took too long
   | 'network' // could not reach the API at all
   | 'http_error' // the API answered with an error status (see `status`)
+  | 'blocked' // refused for safety before sending (private address, bad path, redirect)
   | 'internal'; // a bug in our own tool code
 
 /** A failure in the normalized shape that goes back to the model. */

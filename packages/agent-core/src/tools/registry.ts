@@ -36,6 +36,9 @@ export class ToolRegistry {
    */
   definitions(): ToolDefinition[] {
     return [...this.tools.values()].map((tool) => {
+      if (tool.parameters !== undefined) {
+        return { name: tool.name, description: tool.description, parameters: tool.parameters };
+      }
       const schema = z.toJSONSchema(tool.input, { io: 'input' });
       delete schema.$schema;
       return { name: tool.name, description: tool.description, parameters: { ...schema } };

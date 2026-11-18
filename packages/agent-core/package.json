@@ -18,10 +18,12 @@
     "tools:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/tools-check.js",
     "chat": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/chat.js",
     "failure-lab": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/failure-lab.js",
-    "bench:context": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/bench-context.js"
+    "bench:context": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/bench-context.js",
+    "openapi:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/openapi-check.js"
   },
   "dependencies": {
     "@toolbridge/shared": "workspace:*",
+    "@toolbridge/spec-compiler": "workspace:*",
     "openai": "7.57.0",
     "pino": "10.4.0",
     "zod": "4.6.7"

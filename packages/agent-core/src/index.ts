@@ -25,3 +25,18 @@ export {
   type StopReason,
 } from './agent/loop.js';
 export { STORE_AGENT_SYSTEM_PROMPT } from './agent/system-prompt.js';
+export { createOpenApiTools, type OpenApiToolsOptions } from './openapi/generated-tools.js';
+export {
+  applyAuth,
+  StaticCredentials,
+  TokenLogin,
+  type AuthProvider,
+  type TokenLoginOptions,
+} from './openapi/auth.js';
+export {
+  SafeHttpClient,
+  isBlockedAddress,
+  type SafeHttpClientOptions,
+  type HttpResponse,
+} from './openapi/http-client.js';
+export { buildRequest, selectVariant, type HttpRequest } from './openapi/request.js';
