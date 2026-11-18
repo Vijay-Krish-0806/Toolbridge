@@ -42,6 +42,13 @@ export interface ToolDefinition {
   risk: RiskLevel;
   /** Usually one. More when several operations were merged; 2.3 runs the first whose required args are all present. */
   variants: Binding[];
+  /** Set by the overrides file: the response fields to keep (per item, for lists). */
+  result?: ResultShape;
+}
+
+export interface ResultShape {
+  /** Field names to keep; dot paths such as "order.number" reach into nested objects. */
+  fields: string[];
 }
 
 export interface ToolWarning {

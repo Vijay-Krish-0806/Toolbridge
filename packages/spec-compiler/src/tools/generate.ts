@@ -5,6 +5,7 @@ import type { ApiModel, HttpMethod, JsonSchema, Operation } from '../model.js';
 import { linkMentions } from './mentions.js';
 import { defaultToolName, fitName, uniqueName } from './naming.js';
 import { type MergeRule, type Overrides, parseOverrides } from './overrides.js';
+import { unknownResultFields } from './result.js';
 import { capText, simplifySchema } from './schema.js';
 import type {
   ArgBinding,
@@ -74,6 +75,11 @@ export function compileTools(
 
     const bound = bindOperation(op, model, warn);
     const name = claimName(override.name ?? defaultToolName(op), op.id, taken, warn);
+    if (override.result !== undefined) {
+      for (const field of unknownResultFields(op, override.result.fields, model.schemas)) {
+        warn(`Result field "${field}" is not in the response schema.`, op.id);
+      }
+    }
     tools.push({
       name,
       description: composeDescription(op, override.description),
@@ -81,6 +87,7 @@ export function compileTools(
       safety: override.safety ?? defaultSafety(op.method),
       risk: override.risk ?? defaultRisk(op.method),
       variants: [bound.binding],
+      ...(override.result !== undefined && { result: override.result }),
     });
   }
   linkMentions(tools);

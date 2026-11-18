@@ -11,6 +11,7 @@ import { type AuthProvider, applyAuth } from './auth.js';
 import { parseBody, responseError } from './errors.js';
 import type { SafeHttpClient } from './http-client.js';
 import { type Args, buildRequest, selectVariant } from './request.js';
+import { shapeResult } from './shaping.js';
 
 export interface OpenApiToolsOptions {
   /** Where the API lives, for example http://127.0.0.1:3000 or https://api.example.com/v1. */
@@ -49,7 +50,8 @@ export function createOpenApiTools(
 /**
  * Runs one tool call: pick the variant, build the request, add credentials, send it. On a 401,
  * if the auth provider can refresh (a login token expired), it is retried once with new
- * credentials. Error statuses become ToolExecutionErrors with the API's message.
+ * credentials. Error statuses become ToolExecutionErrors with the API's message; successful
+ * results are shaped (pagination hints, field allowlists) before the model sees them.
  */
 async function callOperation(
   definition: ToolDefinition,
@@ -71,5 +73,5 @@ async function callOperation(
   let response = await send();
   if (response.status === 401 && options.auth?.invalidate?.() === true) response = await send();
   if (response.status >= 400) throw responseError(response, label);
-  return parseBody(response);
+  return shapeResult(parseBody(response), definition.result);
 }

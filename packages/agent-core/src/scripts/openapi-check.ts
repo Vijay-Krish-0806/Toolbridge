@@ -123,7 +123,12 @@ async function check(
     ? `ok, ${String(result.content.length)} chars: ${result.content.slice(0, 100)}...`
     : `error ${result.error.code}${result.error.status ? ` ${String(result.error.status)}` : ''}: ${result.error.message.split('\n').join(' ')}`;
   console.log(`${passed ? 'PASS' : 'FAIL'} ${label}\n     ${summary}`);
-  return result.ok ? JSON.parse(result.content) : undefined;
+  if (!result.ok) return undefined;
+  try {
+    return JSON.parse(result.content) as unknown;
+  } catch {
+    return result.content; // truncated by the executor's result cap: no longer valid JSON
+  }
 }
 
 /** Compares a generated tool's result with the hand-written tool's result on the same input. */
@@ -131,6 +136,26 @@ function same(label: string, generated: unknown, handWritten: unknown): void {
   const passed = JSON.stringify(generated) === JSON.stringify(handWritten);
   if (!passed) failures++;
   console.log(`${passed ? 'PASS' : 'FAIL'} ${label}`);
+}
+
+/**
+ * Step 2.3b: a shaped generated result must be about as small as the hand-shaped Phase 1 one.
+ * Passes at up to 1.5x, because generated lists also keep `_id` (later tools chain by id).
+ */
+function compact(label: string, generated: unknown, handWritten: unknown): void {
+  const g = JSON.stringify(generated).length;
+  const h = JSON.stringify(handWritten).length;
+  const passed = g <= 1.5 * h;
+  if (!passed) failures++;
+  console.log(
+    `${passed ? 'PASS' : 'FAIL'} ${label}: ${String(g)} chars vs ${String(h)} hand-shaped (${(g / h).toFixed(2)}x)`,
+  );
+}
+
+/** Records a pass or failure for a plain condition. */
+function expectThat(label: string, condition: boolean): void {
+  if (!condition) failures++;
+  console.log(`${condition ? 'PASS' : 'FAIL'} ${label}`);
 }
 
 /** Runs every check in order: parity with the hand-written tools, failure paths, then safety. */
@@ -230,6 +255,72 @@ async function main(): Promise<void> {
     '  same products',
     products?.items.map((p) => p.sku),
     handProducts?.products.map((p) => p.sku),
+  );
+
+  console.log('\n-- Result shaping (2.3b)');
+  compact('  orders_list is compact', page, handPage);
+  compact('  products_list is compact', products, handProducts);
+  const big = (await check(
+    'orders_list, 40 per page',
+    support,
+    'orders_list',
+    { limit: 40 },
+    { ok: true },
+  )) as { total: number; hasMore: boolean; nextPage: number | null } | undefined;
+  expectThat(
+    `  pagination hint: total ${String(big?.total)}, hasMore ${String(big?.hasMore)}, nextPage ${String(big?.nextPage)}`,
+    big !== undefined && big.total > 40 && big.hasMore && big.nextPage === 2,
+  );
+  const lastPage = Math.ceil((big?.total ?? 1) / 40);
+  const last = (await check(
+    `orders_list, last page (${String(lastPage)})`,
+    support,
+    'orders_list',
+    { limit: 40, page: lastPage },
+    { ok: true },
+  )) as { hasMore: boolean; nextPage: number | null } | undefined;
+  expectThat(
+    '  last page says hasMore false, nextPage null',
+    last?.hasMore === false && last.nextPage === null,
+  );
+  const truncated = await check(
+    'orders_list, 100 per page (over the 8,000-char cap)',
+    support,
+    'orders_list',
+    { limit: 100 },
+    { ok: true },
+  );
+  expectThat(
+    '  truncated, but the paging hint survived (it comes before the items)',
+    typeof truncated === 'string' &&
+      truncated.includes('"hasMore":true') &&
+      truncated.includes('[truncated'),
+  );
+  const delayed = (await check(
+    'orders_delayed (nested allowlist)',
+    support,
+    'orders_delayed',
+    { limit: 2 },
+    { ok: true },
+  )) as { items: { order?: Record<string, unknown>; daysLate?: number }[] } | undefined;
+  const firstDelayed = delayed?.items[0];
+  expectThat(
+    '  nested fields kept (order.number, daysLate), order line items dropped',
+    firstDelayed === undefined ||
+      (typeof firstDelayed.order?.number === 'string' &&
+        typeof firstDelayed.daysLate === 'number' &&
+        firstDelayed.order.items === undefined),
+  );
+  const detail = (await check(
+    'customers_get_by_id keeps every field (no allowlist on detail tools)',
+    support,
+    'customers_get_by_id',
+    { id: byNumber?.customerId },
+    { ok: true },
+  )) as Record<string, unknown> | undefined;
+  expectThat(
+    '  detail still has notes and address',
+    detail !== undefined && 'notes' in detail && 'address' in detail,
   );
 
   await check(

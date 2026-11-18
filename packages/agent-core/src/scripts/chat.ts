@@ -3,21 +3,30 @@
  *   pnpm --filter @toolbridge/agent-core chat                    interactive (/reset, /exit)
  *   pnpm --filter @toolbridge/agent-core chat "question"         one question, then exit
  *   pnpm --filter @toolbridge/agent-core chat --max-iterations 1 "question"
+ *   pnpm --filter @toolbridge/agent-core chat --openapi "question"  use the tools generated from
+ *     specs/host-store.json (+ overrides) instead of the five hand-written ones
  * Each run is logged as JSON lines to logs/agent.ndjson, tagged with its runId.
  */
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
+import { compileTools, loadSpec, normalize, parseOverrides } from '@toolbridge/spec-compiler';
 import { type AgentEvent, type AgentLimits, type AgentRunResult, runAgent } from '../agent/loop.js';
 import { STORE_AGENT_SYSTEM_PROMPT } from '../agent/system-prompt.js';
 import { loadHostApiConfig, loadLLMConfig } from '../config.js';
 import { HostApiClient } from '../host-api/client.js';
 import { createHostStoreTools } from '../host-api/tools.js';
+import { TokenLogin } from '../openapi/auth.js';
+import { createOpenApiTools } from '../openapi/generated-tools.js';
+import { SafeHttpClient } from '../openapi/http-client.js';
 import { OpenAICompatibleProvider } from '../llm/openai-compatible.js';
 import type { ChatMessage } from '../llm/types.js';
 import { createFileLogger, logAgentEvent, logToolRetry } from '../logging/agent-logger.js';
 import { ToolExecutor } from '../tools/executor.js';
 import { ToolRegistry } from '../tools/registry.js';
+import type { Tool } from '../tools/tool.js';
 
 /** Where run logs go, relative to the folder the CLI runs in (packages/agent-core). */
 const LOG_FILE = 'logs/agent.ndjson';
@@ -102,13 +111,44 @@ function printStep(event: AgentEvent): void {
 }
 
 /**
+ * Compiles the host spec and its overrides into tools (Steps 2.1 to 2.3) that call the host API
+ * through the SSRF-safe client, logged in as the configured staff account.
+ */
+async function createGeneratedTools(): Promise<Tool[]> {
+  const config = loadHostApiConfig();
+  const specs = resolve(import.meta.dirname, '../../../../specs');
+  const { model } = normalize(await loadSpec(resolve(specs, 'host-store.json')));
+  const overrides = parseOverrides(
+    JSON.parse(await readFile(resolve(specs, 'host-store.overrides.json'), 'utf8')),
+  );
+  const client = new SafeHttpClient({ allowPrivateHosts: [new URL(config.baseUrl).hostname] });
+  const auth = new TokenLogin({
+    client,
+    loginUrl: new URL('/auth/login', config.baseUrl),
+    credentials: { email: config.email, password: config.password },
+    tokenField: 'accessToken',
+  });
+  const { tools } = compileTools(model, overrides);
+  return createOpenApiTools(tools, {
+    baseUrl: config.baseUrl,
+    securitySchemes: model.securitySchemes,
+    auth,
+    client,
+  });
+}
+
+/**
  * Wires the real pieces together (model, host API client, tools, executor, logger) and returns a
  * function that answers one question, keeping the conversation between questions.
  */
-function createSession(limits: Partial<AgentLimits>) {
+async function createSession(limits: Partial<AgentLimits>, openapi: boolean) {
   const llmConfig = loadLLMConfig();
   const llm = new OpenAICompatibleProvider(llmConfig);
-  const registry = new ToolRegistry(createHostStoreTools(new HostApiClient(loadHostApiConfig())));
+  const registry = new ToolRegistry(
+    openapi
+      ? await createGeneratedTools()
+      : createHostStoreTools(new HostApiClient(loadHostApiConfig())),
+  );
   const logger = createFileLogger(LOG_FILE);
   // The executor lives for the whole session, so retries log through whichever run is current.
   let runLogger = logger;
@@ -122,6 +162,7 @@ function createSession(limits: Partial<AgentLimits>) {
 
   return {
     model: llmConfig.model,
+    toolCount: registry.names().length,
     /** Forgets the conversation, keeping only the system prompt. */
     reset: () => {
       history = [systemMessage];
@@ -176,12 +217,18 @@ function createSession(limits: Partial<AgentLimits>) {
 /** Reads flags, then runs either one question or an interactive prompt loop. */
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
-    options: { 'max-iterations': { type: 'string' } },
+    options: { 'max-iterations': { type: 'string' }, openapi: { type: 'boolean' } },
     allowPositionals: true,
   });
   const maxIterations =
     values['max-iterations'] === undefined ? undefined : Number(values['max-iterations']);
-  const session = createSession(maxIterations === undefined ? {} : { maxIterations });
+  const session = await createSession(
+    maxIterations === undefined ? {} : { maxIterations },
+    values.openapi === true,
+  );
+  console.log(
+    `${String(session.toolCount)} tools (${values.openapi === true ? 'generated from the spec' : 'hand-written'})`,
+  );
 
   const question = positionals.join(' ').trim();
   if (question) {

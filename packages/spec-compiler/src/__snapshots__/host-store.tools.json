@@ -92,7 +92,17 @@
         },
         "requiredArgs": []
       }
-    ]
+    ],
+    "result": {
+      "fields": [
+        "_id",
+        "sku",
+        "name",
+        "category",
+        "priceCents",
+        "active"
+      ]
+    }
   },
   {
     "name": "products_create",
@@ -652,7 +662,15 @@
         },
         "requiredArgs": []
       }
-    ]
+    ],
+    "result": {
+      "fields": [
+        "_id",
+        "name",
+        "email",
+        "tier"
+      ]
+    }
   },
   {
     "name": "customers_get_by_id",
@@ -839,7 +857,17 @@
           "id"
         ]
       }
-    ]
+    ],
+    "result": {
+      "fields": [
+        "_id",
+        "number",
+        "status",
+        "customerId",
+        "totalCents",
+        "placedAt"
+      ]
+    }
   },
   {
     "name": "orders_list",
@@ -942,7 +970,17 @@
         },
         "requiredArgs": []
       }
-    ]
+    ],
+    "result": {
+      "fields": [
+        "_id",
+        "number",
+        "status",
+        "customerId",
+        "totalCents",
+        "placedAt"
+      ]
+    }
   },
   {
     "name": "orders_create",
@@ -1095,7 +1133,18 @@
         },
         "requiredArgs": []
       }
-    ]
+    ],
+    "result": {
+      "fields": [
+        "order._id",
+        "order.number",
+        "order.customerId",
+        "shipment.carrier",
+        "shipment.trackingNumber",
+        "shipment.estimatedDeliveryAt",
+        "daysLate"
+      ]
+    }
   },
   {
     "name": "orders_get",
@@ -1650,7 +1699,17 @@
         },
         "requiredArgs": []
       }
-    ]
+    ],
+    "result": {
+      "fields": [
+        "_id",
+        "orderId",
+        "amountCents",
+        "reason",
+        "status",
+        "requestedAt"
+      ]
+    }
   },
   {
     "name": "refunds_request",

@@ -13,6 +13,11 @@ const OperationOverride = z.strictObject({
   description: z.string().optional(),
   safety: z.enum(['read', 'write']).optional(),
   risk: RiskLevel.optional(),
+  /**
+   * Which response fields the model sees. For a list (or a page of items) it applies to each
+   * item. Dot paths reach into nested objects, for example "order.number".
+   */
+  result: z.strictObject({ fields: z.array(z.string()).min(1) }).optional(),
 });
 
 const MergeRule = z.strictObject({
