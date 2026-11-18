@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { defineTool, type Tool } from '../tools/tool.js';
 import { ToolExecutionError } from '../tools/errors.js';
 import type { HostApiClient } from './client.js';
+import { shapeOrderPage, shapeProductPage } from './shaping.js';
 
 const orderNumber = z
   .string()
@@ -22,8 +23,10 @@ export function createHostStoreTools(api: HostApiClient): Tool[] {
   const listOrders = defineTool({
     name: 'list_orders',
     description:
-      'List orders, newest first, with optional filters. Returns { items, page, limit, total }. ' +
-      'Amounts are in cents. To look up one order by its number, use get_order instead.',
+      'List orders, newest first, with optional filters. Returns a short summary per order ' +
+      '(number, status, customerId, totalCents, placedAt, itemCount) plus total, hasMore and nextPage. ' +
+      'If hasMore is true, call again with page = nextPage to get the rest. Amounts are in cents. ' +
+      'For line items or notes of one order, use get_order.',
     safety: 'read',
     input: z.object({
       status: z
@@ -36,7 +39,7 @@ export function createHostStoreTools(api: HostApiClient): Tool[] {
       limit,
       page,
     }),
-    execute: (input, { signal }) => api.get('/orders', input, signal),
+    execute: async (input, { signal }) => shapeOrderPage(await api.get('/orders', input, signal)),
   });
 
   const getOrder = defineTool({
@@ -66,7 +69,8 @@ export function createHostStoreTools(api: HostApiClient): Tool[] {
   const listProducts = defineTool({
     name: 'list_products',
     description:
-      'Search the product catalog. Returns { items, page, limit, total }. Prices are in cents.',
+      'Search the product catalog. Returns sku, name, category, priceCents and active per product, ' +
+      'plus total, hasMore and nextPage. If hasMore is true, call again with page = nextPage. Prices are in cents.',
     safety: 'read',
     input: z.object({
       search: z.string().optional().describe('Text to find in the product name, case-insensitive.'),
@@ -75,7 +79,8 @@ export function createHostStoreTools(api: HostApiClient): Tool[] {
       limit,
       page,
     }),
-    execute: (input, { signal }) => api.get('/products', input, signal),
+    execute: async (input, { signal }) =>
+      shapeProductPage(await api.get('/products', input, signal)),
   });
 
   const requestRefund = defineTool({

@@ -28,6 +28,8 @@ export interface ToolExecutorOptions {
   onRetry?: (event: RetryEvent) => void;
   /** How to wait between retries. Tests pass a no-op so they run instantly. */
   sleep?: (ms: number) => Promise<void>;
+  /** Longest result (in characters) sent to the model; longer results are cut with a note. */
+  maxResultChars?: number;
 }
 
 /** Runs tool calls from the model safely: validate, run with a timeout, retry reads, normalize errors. */
@@ -37,8 +39,9 @@ export class ToolExecutor {
   private readonly baseDelayMs: number;
   private readonly onRetry: ((event: RetryEvent) => void) | undefined;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly maxResultChars: number;
 
-  /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay. */
+  /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
     private readonly registry: ToolRegistry,
     options: ToolExecutorOptions = {},
@@ -48,6 +51,7 @@ export class ToolExecutor {
     this.baseDelayMs = options.baseDelayMs ?? 250;
     this.onRetry = options.onRetry;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.maxResultChars = options.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
   }
 
   /**
@@ -85,7 +89,8 @@ export class ToolExecutor {
           (signal) => tool.execute(parsed.data, { signal }),
           this.timeoutMs,
         );
-        return { ok: true, content: JSON.stringify(output ?? null) };
+        const content = JSON.stringify(output ?? null);
+        return { ok: true, content: truncateResult(content, this.maxResultChars) };
       } catch (thrown) {
         const error = toToolError(thrown);
         // Never retry writes: if the first attempt reached the server, a retry could repeat it.
@@ -98,6 +103,29 @@ export class ToolExecutor {
       }
     }
   }
+}
+
+/** Shorthand for a failed result with a non-retryable error. */
+/**
+ * About 2,000 to 2,500 tokens: room for several results in a 16K context. Ollama silently drops
+ * messages that do not fit (the failure lab saw a 59,122-character result vanish completely), so
+ * it is far better to send part of a result with a clear note than to lose all of it.
+ */
+export const DEFAULT_MAX_RESULT_CHARS = 8_000;
+
+/**
+ * Cuts `content` to at most `maxChars` and adds a note telling the model what happened and what to
+ * do instead. The cut JSON is no longer valid JSON, but the model can still read it, and the note
+ * makes the gap explicit:
+ *   59,122 chars  ->  first 8,000 chars + "... [truncated: showed 8000 of 59122 characters. ...]"
+ * Shorter content is returned unchanged.
+ */
+export function truncateResult(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  return (
+    `${content.slice(0, maxChars)}... [truncated: showed ${String(maxChars)} of ` +
+    `${String(content.length)} characters. Use filters or a smaller page to see the rest.]`
+  );
 }
 
 /** Shorthand for a failed result with a non-retryable error. */

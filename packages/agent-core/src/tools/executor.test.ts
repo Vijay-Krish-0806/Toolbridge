@@ -1,12 +1,13 @@
 /**
- * Kept as a test because it guards money: a write tool (such as a refund) must never be retried
- * automatically, or one request could refund twice.
+ * Kept as a test because it guards money and data: a write tool (such as a refund) must never be
+ * retried automatically, or one request could refund twice; and an oversized result must be cut
+ * with a visible note, because Ollama silently drops a message that does not fit the context.
  */
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import { ToolExecutionError } from './errors.js';
-import { type RetryEvent, ToolExecutor } from './executor.js';
+import { type RetryEvent, ToolExecutor, truncateResult } from './executor.js';
 import { ToolRegistry } from './registry.js';
 import { type SafetyClass, type Tool, defineTool } from './tool.js';
 
@@ -110,5 +111,25 @@ describe('ToolExecutor', () => {
       ok: false,
       error: { code: 'unknown_tool', message: expect.stringContaining('get_thing') as string },
     });
+  });
+
+  it('cuts an oversized result and says so, leaving small results untouched', async () => {
+    const big = defineTool({
+      name: 'big',
+      description: 'returns a long string',
+      safety: 'read',
+      input: z.object({}),
+      execute: () => Promise.resolve('x'.repeat(50)),
+    });
+    const executor = new ToolExecutor(new ToolRegistry([big]), { maxResultChars: 20 });
+
+    const result = await executor.run(call('big', '{}'));
+
+    // 50 x's become a 52-character JSON string, cut to the first 20 characters plus a note.
+    expect(result).toEqual({
+      ok: true,
+      content: `"${'x'.repeat(19)}... [truncated: showed 20 of 52 characters. Use filters or a smaller page to see the rest.]`,
+    });
+    expect(truncateResult('{"ok":true}', 20)).toBe('{"ok":true}');
   });
 });

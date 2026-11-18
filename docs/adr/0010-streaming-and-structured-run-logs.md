@@ -12,7 +12,7 @@ Model turns take 15 to 60 s locally, and most of that is the model's "thinking",
 - The agent loop always calls `llm.stream()`. It passes on text pieces (`text-delta`) and Ollama's non-standard `reasoning` field (`reasoning-delta`) as agent events. Reasoning is display-only: it is not stored in the conversation and is not sent back to the model.
 - Logging uses Pino 10.4.0, writing JSON lines to `logs/agent.ndjson` (gitignored). Each run gets a `crypto.randomUUID()` runId, bound through `logger.child({ runId })`.
 - Logging is attached through the existing `onEvent` callback and the executor's `onRetry` hook, not inside the loop. The loop stays free of I/O.
-- Logs record tool arguments, durations, error codes and result *sizes*, but not tool result bodies. Streaming pieces are not logged; the final answer is logged once at `run-end`.
+- Logs record tool arguments, durations, error codes and result _sizes_, but not tool result bodies. Streaming pieces are not logged; the final answer is logged once at `run-end`.
 - The destination is synchronous (`sync: true`).
 
 ## Alternatives considered

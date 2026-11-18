@@ -71,8 +71,8 @@ async function main(): Promise<void> {
     'list_orders',
     { status: 'delivered', limit: 3 },
     { ok: true },
-  )) as { items: { number: string }[] } | undefined;
-  const orderNumber = page?.items[0]?.number ?? 'ORD-10001';
+  )) as { orders: { number: string }[] } | undefined;
+  const orderNumber = page?.orders[0]?.number ?? 'ORD-10001';
   const order = (await check(
     `get_order ${orderNumber}`,
     support,
