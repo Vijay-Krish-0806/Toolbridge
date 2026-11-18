@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Types } from 'mongoose';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { Endpoint } from '../common/endpoint.decorator.js';
+import { ApiObjectIdParam } from '../common/api-object-id-param.js';
 import type { Page } from '../common/query.js';
 import type { Shipment } from '../domain/shipment.schema.js';
 import { ShipmentCommandsService } from './shipment-commands.service.js';
@@ -47,6 +48,7 @@ export class ShipmentsController {
   }
 
   @Get(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Get a shipment by id',
     description:
@@ -76,6 +78,7 @@ export class ShipmentsController {
 
   @Post(':id/deliver')
   @HttpCode(200)
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Mark a shipment as delivered',
     description: 'Records delivery now. The order becomes delivered.',

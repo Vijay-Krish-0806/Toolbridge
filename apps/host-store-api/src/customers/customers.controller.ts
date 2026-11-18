@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Types } from 'mongoose';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { Endpoint } from '../common/endpoint.decorator.js';
+import { ApiObjectIdParam } from '../common/api-object-id-param.js';
 import type { Page } from '../common/query.js';
 import type { Customer } from '../domain/customer.schema.js';
 import type { Order } from '../domain/order.schema.js';
@@ -45,6 +46,7 @@ export class CustomersController {
   }
 
   @Get(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Get a customer by id',
     description: 'Returns contact details, address, loyalty tier and notes for one customer.',
@@ -57,6 +59,7 @@ export class CustomersController {
   }
 
   @Get(':id/orders')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: "List a customer's orders",
     description: 'All orders placed by one customer, newest first.',
@@ -73,6 +76,7 @@ export class CustomersController {
   }
 
   @Patch(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Update a customer',
     description:

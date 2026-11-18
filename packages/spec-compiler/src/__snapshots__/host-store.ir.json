@@ -237,7 +237,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -250,7 +250,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -683,10 +683,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -787,10 +787,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -961,7 +961,7 @@
               "example": 1999
             },
             "dryRun": {
-              "type": "object",
+              "type": "boolean",
               "description": "true (default) only previews the changes. Send false to apply them.",
               "default": true
             }
@@ -1074,7 +1074,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -1087,7 +1087,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -1240,10 +1240,10 @@
           "name": "productId",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -1510,7 +1510,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -1523,7 +1523,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -1706,10 +1706,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -1833,10 +1833,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -2014,10 +2014,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         },
         {
@@ -2029,7 +2029,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -2042,7 +2042,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         }
       ],
@@ -2277,7 +2277,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -2290,7 +2290,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -2854,7 +2854,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -2867,7 +2867,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         }
       ],
@@ -3363,10 +3363,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -3565,10 +3565,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -3795,10 +3795,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -4005,10 +4005,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -4236,7 +4236,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -4249,7 +4249,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -4664,10 +4664,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -4770,10 +4770,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -4889,7 +4889,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -4902,7 +4902,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -5279,10 +5279,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -5405,10 +5405,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -5552,10 +5552,10 @@
           "name": "id",
           "in": "path",
           "required": true,
+          "description": "Database id: 24 hexadecimal characters.",
           "deprecated": false,
           "schema": {
-            "type": "object",
-            "properties": {}
+            "type": "string"
           }
         }
       ],
@@ -5707,7 +5707,7 @@
           "schema": {
             "minimum": 1,
             "default": 1,
-            "type": "object"
+            "type": "integer"
           }
         },
         {
@@ -5720,7 +5720,7 @@
             "minimum": 1,
             "maximum": 100,
             "default": 20,
-            "type": "object"
+            "type": "integer"
           }
         },
         {

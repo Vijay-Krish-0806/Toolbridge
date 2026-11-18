@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Types } from 'mongoose';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { Endpoint } from '../common/endpoint.decorator.js';
+import { ApiObjectIdParam } from '../common/api-object-id-param.js';
 import type { Page } from '../common/query.js';
 import type { Product } from '../domain/product.schema.js';
 import { ProductCommandsService } from './product-commands.service.js';
@@ -50,6 +51,7 @@ export class ProductsController {
   }
 
   @Get(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Get a product by id',
     description: 'Returns one product, including its current price and whether it is still sold.',
@@ -93,6 +95,7 @@ export class ProductsController {
   }
 
   @Patch(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Update a product',
     description:

@@ -7,15 +7,21 @@ export const MAX_PAGE_SIZE = 100;
 
 /** Page-number pagination: ?page=1&limit=20. Simple for agents and people; fine at this data size. */
 export class PageQuery {
-  @ApiPropertyOptional({ description: 'Page number, starting at 1.', minimum: 1, default: 1 })
+  @ApiPropertyOptional({
+    description: 'Page number, starting at 1.',
+    type: 'integer',
+    minimum: 1,
+    default: 1,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  page = 1;
+  page: number = 1;
 
   @ApiPropertyOptional({
     description: `Items per page, at most ${String(MAX_PAGE_SIZE)}.`,
+    type: 'integer',
     minimum: 1,
     maximum: MAX_PAGE_SIZE,
     default: 20,
@@ -25,7 +31,7 @@ export class PageQuery {
   @IsInt()
   @Min(1)
   @Max(MAX_PAGE_SIZE)
-  limit = 20;
+  limit: number = 20;
 }
 
 /** Adds an optional date range. `from` is inclusive and `to` is exclusive. */

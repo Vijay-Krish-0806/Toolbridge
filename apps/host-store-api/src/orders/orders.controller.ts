@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Types } from 'mongoose';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { Endpoint } from '../common/endpoint.decorator.js';
+import { ApiObjectIdParam } from '../common/api-object-id-param.js';
 import { PageQuery, type Page } from '../common/query.js';
 import type { Order } from '../domain/order.schema.js';
 import type { Role } from '../domain/user.schema.js';
@@ -58,6 +59,7 @@ export class OrdersController {
   }
 
   @Get(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Get an order by id',
     description: 'Returns one order with its line items, totals in cents, coupon and notes.',
@@ -87,6 +89,7 @@ export class OrdersController {
 
   @Post(':id/cancel')
   @HttpCode(200)
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Cancel an order',
     description:
@@ -107,6 +110,7 @@ export class OrdersController {
 
   @Post(':id/mark-paid')
   @HttpCode(200)
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Mark an order as paid',
     description: 'Moves a pending order to paid, so the warehouse can ship it.',
@@ -123,6 +127,7 @@ export class OrdersController {
   }
 
   @Patch(':id/notes')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Replace the notes on an order',
     description: 'Overwrites the free-text notes of an order. Send an empty string to clear them.',

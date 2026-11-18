@@ -1,0 +1,28 @@
+{
+  "operations": {
+    "HealthController_check": { "hidden": true },
+    "AuthController_login": { "hidden": true },
+    "AuthController_me": { "hidden": true },
+    "ProductsController_bulkPriceUpdate": { "risk": "high" },
+    "OrdersController_cancel": { "risk": "high" },
+    "RefundsController_request": { "risk": "high" },
+    "RefundsController_approve": { "risk": "high" }
+  },
+  "merge": [
+    {
+      "name": "orders_get",
+      "description": "Returns one order with its line items, totals in cents, coupon and notes. Pass either id or number (for example ORD-10042, case-insensitive). Allowed roles: any signed-in staff role.",
+      "operations": ["OrdersController_getById", "OrdersController_getByNumber"]
+    },
+    {
+      "name": "products_get",
+      "description": "Returns one product, including its current price and whether it is still sold. Pass either id or sku (for example SKU-0042, case-insensitive). Allowed roles: any signed-in staff role.",
+      "operations": ["ProductsController_getById", "ProductsController_getBySku"]
+    },
+    {
+      "name": "shipments_get",
+      "description": "Returns carrier, tracking number, status and the shipped, estimated and delivered dates of one shipment. Pass either id or trackingNumber (for example TRK00000010). Allowed roles: any signed-in staff role.",
+      "operations": ["ShipmentsController_getById", "ShipmentsController_getByTracking"]
+    }
+  ]
+}

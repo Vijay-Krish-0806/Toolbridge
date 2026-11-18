@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Types } from 'mongoose';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { Endpoint } from '../common/endpoint.decorator.js';
+import { ApiObjectIdParam } from '../common/api-object-id-param.js';
 import type { Page } from '../common/query.js';
 import type { Refund } from '../domain/refund.schema.js';
 import type { Role } from '../domain/user.schema.js';
@@ -42,6 +43,7 @@ export class RefundsController {
   }
 
   @Get(':id')
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Get a refund by id',
     description: 'Returns one refund: amount in cents, reason, status and dates.',
@@ -72,6 +74,7 @@ export class RefundsController {
 
   @Post(':id/approve')
   @HttpCode(200)
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Approve a refund',
     description: 'RISKY: completes a pending refund, so the money goes back to the customer.',
@@ -90,6 +93,7 @@ export class RefundsController {
 
   @Post(':id/reject')
   @HttpCode(200)
+  @ApiObjectIdParam('id')
   @Endpoint({
     summary: 'Reject a refund',
     description:

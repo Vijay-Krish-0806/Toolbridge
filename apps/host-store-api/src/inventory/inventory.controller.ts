@@ -4,6 +4,7 @@ import { ApiTags } from '@nestjs/swagger';
 import type { Types } from 'mongoose';
 import { CurrentUser, type AuthUser } from '../auth/auth.decorators.js';
 import { Endpoint } from '../common/endpoint.decorator.js';
+import { ApiObjectIdParam } from '../common/api-object-id-param.js';
 import { InventoryCommandsService } from './inventory-commands.service.js';
 import {
   AdjustStockDto,
@@ -35,6 +36,7 @@ export class InventoryController {
   }
 
   @Get('products/:productId')
+  @ApiObjectIdParam('productId')
   @Endpoint({
     summary: 'Get stock for one product',
     description: 'Stock in every warehouse for one product, plus the total available to sell.',

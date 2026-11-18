@@ -1,0 +1,2201 @@
+[
+  {
+    "name": "products_list",
+    "description": "List products. Searches the catalog. Filter by category, active status, price range (cents) or name text. Sorted by SKU. Use this to find a product id or SKU before other calls. Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "electronics",
+            "home",
+            "outdoor",
+            "apparel",
+            "fitness"
+          ],
+          "description": "Only this category."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "true = on sale, false = discontinued."
+        },
+        "minPriceCents": {
+          "type": "number",
+          "description": "Minimum price in cents (inclusive)."
+        },
+        "maxPriceCents": {
+          "type": "number",
+          "description": "Maximum price in cents (inclusive)."
+        },
+        "search": {
+          "type": "string",
+          "description": "Case-insensitive text to find in the product name."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "ProductsController_list",
+        "method": "get",
+        "path": "/products",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "category": {
+            "in": "query",
+            "name": "category"
+          },
+          "active": {
+            "in": "query",
+            "name": "active"
+          },
+          "minPriceCents": {
+            "in": "query",
+            "name": "minPriceCents"
+          },
+          "maxPriceCents": {
+            "in": "query",
+            "name": "maxPriceCents"
+          },
+          "search": {
+            "in": "query",
+            "name": "search"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "products_create",
+    "description": "Create a product. Adds a product to the catalog, on sale, with zero stock in every warehouse. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "sku": {
+          "type": "string",
+          "description": "Unique SKU: \"SKU-\" and at least four digits."
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "electronics",
+            "home",
+            "outdoor",
+            "apparel",
+            "fitness"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "priceCents": {
+          "type": "number",
+          "description": "Price in cents."
+        }
+      },
+      "required": [
+        "sku",
+        "name",
+        "category",
+        "description",
+        "priceCents"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "ProductsController_create",
+        "method": "post",
+        "path": "/products",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "sku": {
+            "in": "body",
+            "name": "sku"
+          },
+          "name": {
+            "in": "body",
+            "name": "name"
+          },
+          "category": {
+            "in": "body",
+            "name": "category"
+          },
+          "description": {
+            "in": "body",
+            "name": "description"
+          },
+          "priceCents": {
+            "in": "body",
+            "name": "priceCents"
+          }
+        },
+        "requiredArgs": [
+          "sku",
+          "name",
+          "category",
+          "description",
+          "priceCents"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "products_get",
+    "description": "Returns one product, including its current price and whether it is still sold. Pass either id or sku (for example SKU-0042, case-insensitive). Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "sku": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "ProductsController_getById",
+        "method": "get",
+        "path": "/products/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      },
+      {
+        "operationId": "ProductsController_getBySku",
+        "method": "get",
+        "path": "/products/by-sku/{sku}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "sku": {
+            "in": "path",
+            "name": "sku"
+          }
+        },
+        "requiredArgs": [
+          "sku"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "products_update",
+    "description": "Update a product. Changes name, description, price (cents) or active flag. Send only the fields to change. active=false discontinues the product. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "priceCents": {
+          "type": "number",
+          "description": "New price in cents."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "false = discontinue: no new orders."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "ProductsController_update",
+        "method": "patch",
+        "path": "/products/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "name": {
+            "in": "body",
+            "name": "name"
+          },
+          "description": {
+            "in": "body",
+            "name": "description"
+          },
+          "priceCents": {
+            "in": "body",
+            "name": "priceCents"
+          },
+          "active": {
+            "in": "body",
+            "name": "active"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "products_bulk_price_update",
+    "description": "Change many prices at once. RISKY: changes the price of every product in a category, or of a list of SKUs, by a percentage or to a fixed price. dryRun defaults to true and only previews the changes; send dryRun=false to apply them. Existing orders keep the prices they were placed at. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "electronics",
+            "home",
+            "outdoor",
+            "apparel",
+            "fitness"
+          ],
+          "description": "Change every product in this category. Give category OR skus, not both."
+        },
+        "skus": {
+          "description": "Change exactly these SKUs (1 to 200). Give category OR skus, not both.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "changePercent": {
+          "type": "number",
+          "description": "Percent change, -90 to 500. 10 raises prices by 10%. Give changePercent OR setPriceCents."
+        },
+        "setPriceCents": {
+          "type": "number",
+          "description": "Set every matched product to this price in cents. Give changePercent OR setPriceCents."
+        },
+        "dryRun": {
+          "type": "boolean",
+          "description": "true (default) only previews the changes. Send false to apply them.",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "high",
+    "variants": [
+      {
+        "operationId": "ProductsController_bulkPriceUpdate",
+        "method": "post",
+        "path": "/products/bulk-price-update",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "category": {
+            "in": "body",
+            "name": "category"
+          },
+          "skus": {
+            "in": "body",
+            "name": "skus"
+          },
+          "changePercent": {
+            "in": "body",
+            "name": "changePercent"
+          },
+          "setPriceCents": {
+            "in": "body",
+            "name": "setPriceCents"
+          },
+          "dryRun": {
+            "in": "body",
+            "name": "dryRun"
+          }
+        },
+        "requiredArgs": [],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "inventory_list",
+    "description": "List stock levels. One row per product per warehouse (east, west). Filter by warehouse, product, or lowStock=true to find items that need reordering. Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "warehouse": {
+          "type": "string",
+          "enum": [
+            "east",
+            "west"
+          ],
+          "description": "Only this warehouse."
+        },
+        "productId": {
+          "type": "string",
+          "description": "Only rows for this product id."
+        },
+        "lowStock": {
+          "type": "boolean",
+          "description": "true = only rows where available stock (onHand - reserved) is below the reorder level."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "InventoryController_list",
+        "method": "get",
+        "path": "/inventory",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "warehouse": {
+            "in": "query",
+            "name": "warehouse"
+          },
+          "productId": {
+            "in": "query",
+            "name": "productId"
+          },
+          "lowStock": {
+            "in": "query",
+            "name": "lowStock"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "inventory_for_product",
+    "description": "Get stock for one product. Stock in every warehouse for one product, plus the total available to sell. Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        }
+      },
+      "required": [
+        "productId"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "InventoryController_forProduct",
+        "method": "get",
+        "path": "/inventory/products/{productId}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "productId": {
+            "in": "path",
+            "name": "productId"
+          }
+        },
+        "requiredArgs": [
+          "productId"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "inventory_adjust",
+    "description": "Correct a stock count. Adds or removes on-hand units in one warehouse, for example after a recount or damage. The reason is kept in the audit log. Use shipments_create to ship orders, not this. Allowed roles: owner, warehouse.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "productId": {
+          "type": "string",
+          "description": "Product id."
+        },
+        "warehouse": {
+          "type": "string",
+          "enum": [
+            "east",
+            "west"
+          ]
+        },
+        "delta": {
+          "type": "number",
+          "description": "Units to add (positive) or remove (negative), -10000 to 10000, not 0. On-hand stock can never drop below the units reserved for open orders."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the count changed. Kept in the audit log."
+        }
+      },
+      "required": [
+        "productId",
+        "warehouse",
+        "delta",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "InventoryController_adjust",
+        "method": "post",
+        "path": "/inventory/adjust",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "productId": {
+            "in": "body",
+            "name": "productId"
+          },
+          "warehouse": {
+            "in": "body",
+            "name": "warehouse"
+          },
+          "delta": {
+            "in": "body",
+            "name": "delta"
+          },
+          "reason": {
+            "in": "body",
+            "name": "reason"
+          }
+        },
+        "requiredArgs": [
+          "productId",
+          "warehouse",
+          "delta",
+          "reason"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "customers_list",
+    "description": "List customers. Sorted by name. Filter by name or email text, loyalty tier, or country code. Use this to find a customer id from a name or email. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "search": {
+          "type": "string",
+          "description": "Case-insensitive text to find in the name or email."
+        },
+        "tier": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "gold"
+          ],
+          "description": "Only this loyalty tier."
+        },
+        "country": {
+          "type": "string",
+          "description": "Two-letter country code, e.g. US, GB, IN."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "CustomersController_list",
+        "method": "get",
+        "path": "/customers",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "search": {
+            "in": "query",
+            "name": "search"
+          },
+          "tier": {
+            "in": "query",
+            "name": "tier"
+          },
+          "country": {
+            "in": "query",
+            "name": "country"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "customers_get_by_id",
+    "description": "Get a customer by id. Returns contact details, address, loyalty tier and notes for one customer. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "CustomersController_getById",
+        "method": "get",
+        "path": "/customers/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "customers_update",
+    "description": "Update a customer. Changes phone, address (replaced as a whole) or notes. Send only the fields to change. Name and email are not editable here. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "phone": {
+          "type": "string"
+        },
+        "address": {
+          "type": "object",
+          "properties": {
+            "line1": {
+              "type": "string"
+            },
+            "city": {
+              "type": "string"
+            },
+            "postalCode": {
+              "type": "string"
+            },
+            "country": {
+              "type": "string",
+              "description": "Two-letter country code."
+            }
+          },
+          "required": [
+            "line1",
+            "city",
+            "postalCode",
+            "country"
+          ],
+          "description": "Replaces the whole address."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Replaces the notes. Empty string clears them.",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "CustomersController_update",
+        "method": "patch",
+        "path": "/customers/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "phone": {
+            "in": "body",
+            "name": "phone"
+          },
+          "address": {
+            "in": "body",
+            "name": "address"
+          },
+          "notes": {
+            "in": "body",
+            "name": "notes"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "customers_list_orders",
+    "description": "List a customer's orders. All orders placed by one customer, newest first. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "CustomersController_listOrders",
+        "method": "get",
+        "path": "/customers/{id}/orders",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "orders_list",
+    "description": "List orders. Newest first. Filter by status, customer id, placement date range (from/to), minimum total in cents, or coupon code. To find late deliveries use orders_delayed instead. Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "from": {
+          "type": "string",
+          "description": "Start of the date range (inclusive), ISO 8601."
+        },
+        "to": {
+          "type": "string",
+          "description": "End of the date range (exclusive), ISO 8601."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "paid",
+            "shipped",
+            "delivered",
+            "cancelled"
+          ],
+          "description": "Only orders in this status."
+        },
+        "customerId": {
+          "type": "string",
+          "description": "Only orders from this customer id."
+        },
+        "minTotalCents": {
+          "type": "number",
+          "description": "Minimum order total in cents (inclusive)."
+        },
+        "couponCode": {
+          "type": "string",
+          "description": "Only orders that used this coupon code."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "OrdersController_list",
+        "method": "get",
+        "path": "/orders",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "from": {
+            "in": "query",
+            "name": "from"
+          },
+          "to": {
+            "in": "query",
+            "name": "to"
+          },
+          "status": {
+            "in": "query",
+            "name": "status"
+          },
+          "customerId": {
+            "in": "query",
+            "name": "customerId"
+          },
+          "minTotalCents": {
+            "in": "query",
+            "name": "minTotalCents"
+          },
+          "couponCode": {
+            "in": "query",
+            "name": "couponCode"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "orders_create",
+    "description": "Create an order. Creates a pending order for a customer. Prices come from the catalog (not the request), the coupon must be usable now, and stock is reserved in one warehouse. Use forms_order_form first to see the fields, current coupon codes and role-specific options. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "customerId": {
+          "type": "string",
+          "description": "Customer id. Find it with customers_list (search argument)."
+        },
+        "items": {
+          "description": "1 to 20 lines. Each SKU at most once; use quantity for more units.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "sku": {
+                "type": "string",
+                "description": "Product SKU. Find it with products_list."
+              },
+              "quantity": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "sku",
+              "quantity"
+            ]
+          }
+        },
+        "warehouse": {
+          "type": "string",
+          "enum": [
+            "east",
+            "west"
+          ],
+          "description": "Default: the first warehouse that has every item in stock."
+        },
+        "couponCode": {
+          "type": "string",
+          "description": "Coupon code. Must be usable now (see forms_order_form for current codes)."
+        },
+        "manualDiscountCents": {
+          "type": "number",
+          "description": "Extra discount in cents, on top of any coupon. Owner only."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "customerId",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "OrdersController_create",
+        "method": "post",
+        "path": "/orders",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "customerId": {
+            "in": "body",
+            "name": "customerId"
+          },
+          "items": {
+            "in": "body",
+            "name": "items"
+          },
+          "warehouse": {
+            "in": "body",
+            "name": "warehouse"
+          },
+          "couponCode": {
+            "in": "body",
+            "name": "couponCode"
+          },
+          "manualDiscountCents": {
+            "in": "body",
+            "name": "manualDiscountCents"
+          },
+          "notes": {
+            "in": "body",
+            "name": "notes"
+          }
+        },
+        "requiredArgs": [
+          "customerId",
+          "items"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "orders_delayed",
+    "description": "List delayed orders. Orders whose shipment is still in transit after its estimated delivery date, most overdue first. Each item has the order, its shipment and how many days late it is. Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "OrdersController_delayed",
+        "method": "get",
+        "path": "/orders/delayed",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "orders_get",
+    "description": "Returns one order with its line items, totals in cents, coupon and notes. Pass either id or number (for example ORD-10042, case-insensitive). Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "number": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "OrdersController_getById",
+        "method": "get",
+        "path": "/orders/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      },
+      {
+        "operationId": "OrdersController_getByNumber",
+        "method": "get",
+        "path": "/orders/by-number/{number}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "number": {
+            "in": "path",
+            "name": "number"
+          }
+        },
+        "requiredArgs": [
+          "number"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "orders_cancel",
+    "description": "Cancel an order. RISKY: stops the order for good. Only pending or paid orders can be cancelled; their reserved stock goes back to the warehouse. Shipped orders need a refund instead. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the order is cancelled."
+        }
+      },
+      "required": [
+        "id",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "high",
+    "variants": [
+      {
+        "operationId": "OrdersController_cancel",
+        "method": "post",
+        "path": "/orders/{id}/cancel",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "reason": {
+            "in": "body",
+            "name": "reason"
+          }
+        },
+        "requiredArgs": [
+          "id",
+          "reason"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "orders_mark_paid",
+    "description": "Mark an order as paid. Moves a pending order to paid, so the warehouse can ship it. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "OrdersController_markPaid",
+        "method": "post",
+        "path": "/orders/{id}/mark-paid",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "orders_update_notes",
+    "description": "Replace the notes on an order. Overwrites the free-text notes of an order. Send an empty string to clear them. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Replaces the current notes. Empty string clears them.",
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "id",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "OrdersController_updateNotes",
+        "method": "patch",
+        "path": "/orders/{id}/notes",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "notes": {
+            "in": "body",
+            "name": "notes"
+          }
+        },
+        "requiredArgs": [
+          "id",
+          "notes"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "shipments_list",
+    "description": "List shipments. Most recently shipped first. Filter by status, carrier, order id, or delayed=true for shipments still in transit after their estimated delivery date. Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "in_transit",
+            "delivered"
+          ],
+          "description": "Only shipments in this status."
+        },
+        "carrier": {
+          "type": "string",
+          "enum": [
+            "ups",
+            "fedex",
+            "dhl",
+            "usps"
+          ],
+          "description": "Only this carrier."
+        },
+        "orderId": {
+          "type": "string",
+          "description": "Only shipments for this order id."
+        },
+        "delayed": {
+          "type": "boolean",
+          "description": "true = still in transit after the estimated delivery date."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "ShipmentsController_list",
+        "method": "get",
+        "path": "/shipments",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "status": {
+            "in": "query",
+            "name": "status"
+          },
+          "carrier": {
+            "in": "query",
+            "name": "carrier"
+          },
+          "orderId": {
+            "in": "query",
+            "name": "orderId"
+          },
+          "delayed": {
+            "in": "query",
+            "name": "delayed"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "shipments_create",
+    "description": "Ship a paid order. Creates a shipment with a new tracking number for a paid order. The order becomes shipped, and its reserved units are removed from the warehouse stock. Allowed roles: owner, warehouse.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "description": "Id of a paid order to ship."
+        },
+        "carrier": {
+          "type": "string",
+          "enum": [
+            "ups",
+            "fedex",
+            "dhl",
+            "usps"
+          ]
+        }
+      },
+      "required": [
+        "orderId",
+        "carrier"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "ShipmentsController_create",
+        "method": "post",
+        "path": "/shipments",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "orderId": {
+            "in": "body",
+            "name": "orderId"
+          },
+          "carrier": {
+            "in": "body",
+            "name": "carrier"
+          }
+        },
+        "requiredArgs": [
+          "orderId",
+          "carrier"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "shipments_get",
+    "description": "Returns carrier, tracking number, status and the shipped, estimated and delivered dates of one shipment. Pass either id or trackingNumber (for example TRK00000010). Allowed roles: any signed-in staff role.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "trackingNumber": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "ShipmentsController_getById",
+        "method": "get",
+        "path": "/shipments/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      },
+      {
+        "operationId": "ShipmentsController_getByTracking",
+        "method": "get",
+        "path": "/shipments/by-tracking/{trackingNumber}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "trackingNumber": {
+            "in": "path",
+            "name": "trackingNumber"
+          }
+        },
+        "requiredArgs": [
+          "trackingNumber"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "shipments_deliver",
+    "description": "Mark a shipment as delivered. Records delivery now. The order becomes delivered. Allowed roles: owner, warehouse.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "ShipmentsController_deliver",
+        "method": "post",
+        "path": "/shipments/{id}/deliver",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "refunds_list",
+    "description": "List refunds. Newest request first. Filter by status, reason, order id, request date range (from/to), or minimum amount in cents. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "from": {
+          "type": "string",
+          "description": "Start of the date range (inclusive), ISO 8601."
+        },
+        "to": {
+          "type": "string",
+          "description": "End of the date range (exclusive), ISO 8601."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "completed",
+            "rejected"
+          ],
+          "description": "Only refunds in this status."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "damaged",
+            "not_as_described",
+            "late_delivery",
+            "changed_mind",
+            "other"
+          ],
+          "description": "Only refunds with this reason."
+        },
+        "orderId": {
+          "type": "string",
+          "description": "Only refunds for this order id."
+        },
+        "minAmountCents": {
+          "type": "number",
+          "description": "Minimum refund amount in cents (inclusive)."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "RefundsController_list",
+        "method": "get",
+        "path": "/refunds",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "from": {
+            "in": "query",
+            "name": "from"
+          },
+          "to": {
+            "in": "query",
+            "name": "to"
+          },
+          "status": {
+            "in": "query",
+            "name": "status"
+          },
+          "reason": {
+            "in": "query",
+            "name": "reason"
+          },
+          "orderId": {
+            "in": "query",
+            "name": "orderId"
+          },
+          "minAmountCents": {
+            "in": "query",
+            "name": "minAmountCents"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "refunds_request",
+    "description": "Request a refund. RISKY: creates a pending refund for a shipped or delivered order. The amount counts against the order at once and cannot exceed what is left to refund. Money moves only when the owner approves it with refunds_approve. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "orderId": {
+          "type": "string",
+          "description": "Id of a shipped or delivered order."
+        },
+        "amountCents": {
+          "type": "number",
+          "description": "Amount in cents. At most what is left to refund on the order."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "damaged",
+            "not_as_described",
+            "late_delivery",
+            "changed_mind",
+            "other"
+          ]
+        }
+      },
+      "required": [
+        "orderId",
+        "amountCents",
+        "reason"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "high",
+    "variants": [
+      {
+        "operationId": "RefundsController_request",
+        "method": "post",
+        "path": "/refunds",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "orderId": {
+            "in": "body",
+            "name": "orderId"
+          },
+          "amountCents": {
+            "in": "body",
+            "name": "amountCents"
+          },
+          "reason": {
+            "in": "body",
+            "name": "reason"
+          }
+        },
+        "requiredArgs": [
+          "orderId",
+          "amountCents",
+          "reason"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "refunds_get_by_id",
+    "description": "Get a refund by id. Returns one refund: amount in cents, reason, status and dates. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "RefundsController_getById",
+        "method": "get",
+        "path": "/refunds/{id}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "refunds_approve",
+    "description": "Approve a refund. RISKY: completes a pending refund, so the money goes back to the customer. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "high",
+    "variants": [
+      {
+        "operationId": "RefundsController_approve",
+        "method": "post",
+        "path": "/refunds/{id}/approve",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "note": {
+            "in": "body",
+            "name": "note"
+          }
+        },
+        "requiredArgs": [
+          "id"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "refunds_reject",
+    "description": "Reject a refund. Declines a pending refund with a reason. Its amount no longer counts against the order. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Database id: 24 hexadecimal characters."
+        },
+        "note": {
+          "type": "string",
+          "description": "Why the refund is rejected."
+        }
+      },
+      "required": [
+        "id",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "RefundsController_reject",
+        "method": "post",
+        "path": "/refunds/{id}/reject",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "id": {
+            "in": "path",
+            "name": "id"
+          },
+          "note": {
+            "in": "body",
+            "name": "note"
+          }
+        },
+        "requiredArgs": [
+          "id",
+          "note"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "coupons_list",
+    "description": "List coupons. Sorted by code. Filter by active flag or kind. Each coupon includes \"usable\": whether it can be applied right now (active, not expired, uses left). Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "page": {
+          "minimum": 1,
+          "default": 1,
+          "type": "integer",
+          "description": "Page number, starting at 1."
+        },
+        "limit": {
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20,
+          "type": "integer",
+          "description": "Items per page, at most 100."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "true = switched on by staff. Expiry is separate."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "percent",
+            "fixed"
+          ],
+          "description": "percent or fixed (cents) discount."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "CouponsController_list",
+        "method": "get",
+        "path": "/coupons",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "page": {
+            "in": "query",
+            "name": "page"
+          },
+          "limit": {
+            "in": "query",
+            "name": "limit"
+          },
+          "active": {
+            "in": "query",
+            "name": "active"
+          },
+          "kind": {
+            "in": "query",
+            "name": "kind"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "coupons_create",
+    "description": "Create a coupon. Adds an active coupon. kind=percent takes value% off; kind=fixed takes value cents off. Codes are capital letters and digits. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "3 to 20 capital letters or digits."
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "percent",
+            "fixed"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "description": "Percent off (1 to 100) for percent coupons, or cents off for fixed coupons."
+        },
+        "expiresAt": {
+          "type": "string",
+          "description": "Expiry, ISO 8601. Must be in the future."
+        },
+        "maxUses": {
+          "type": "number",
+          "description": "Maximum number of uses. Omit for unlimited."
+        }
+      },
+      "required": [
+        "code",
+        "kind",
+        "value",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "CouponsController_create",
+        "method": "post",
+        "path": "/coupons",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "code": {
+            "in": "body",
+            "name": "code"
+          },
+          "kind": {
+            "in": "body",
+            "name": "kind"
+          },
+          "value": {
+            "in": "body",
+            "name": "value"
+          },
+          "expiresAt": {
+            "in": "body",
+            "name": "expiresAt"
+          },
+          "maxUses": {
+            "in": "body",
+            "name": "maxUses"
+          }
+        },
+        "requiredArgs": [
+          "code",
+          "kind",
+          "value",
+          "expiresAt"
+        ],
+        "bodyContentType": "application/json"
+      }
+    ]
+  },
+  {
+    "name": "coupons_get_by_code",
+    "description": "Get a coupon by code. Looks up one coupon by its code, for example SAVE20. Case-insensitive. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "CouponsController_getByCode",
+        "method": "get",
+        "path": "/coupons/{code}",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "code": {
+            "in": "path",
+            "name": "code"
+          }
+        },
+        "requiredArgs": [
+          "code"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "coupons_deactivate",
+    "description": "Deactivate a coupon. Switches a coupon off so new orders cannot use it. Past orders are not changed. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code"
+      ],
+      "additionalProperties": false
+    },
+    "safety": "write",
+    "risk": "medium",
+    "variants": [
+      {
+        "operationId": "CouponsController_deactivate",
+        "method": "post",
+        "path": "/coupons/{code}/deactivate",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "code": {
+            "in": "path",
+            "name": "code"
+          }
+        },
+        "requiredArgs": [
+          "code"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "reports_sales",
+    "description": "Sales summary for a period. Order count, gross, discounts, net revenue and average order value (all in cents) for orders placed in the period. Cancelled orders are counted separately and excluded from revenue. Defaults to the last 30 days. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Start of the period (inclusive), ISO 8601. Default: 30 days before now."
+        },
+        "to": {
+          "type": "string",
+          "description": "End of the period (exclusive), ISO 8601. Default: now."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "ReportsController_sales",
+        "method": "get",
+        "path": "/reports/sales-summary",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "from": {
+            "in": "query",
+            "name": "from"
+          },
+          "to": {
+            "in": "query",
+            "name": "to"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "reports_refunds",
+    "description": "Refund summary for a period. Count and total of refunds requested in the period, broken down by status and by reason (amounts in cents). Defaults to the last 30 days. Allowed roles: owner.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "from": {
+          "type": "string",
+          "description": "Start of the period (inclusive), ISO 8601. Default: 30 days before now."
+        },
+        "to": {
+          "type": "string",
+          "description": "End of the period (exclusive), ISO 8601. Default: now."
+        }
+      },
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "ReportsController_refunds",
+        "method": "get",
+        "path": "/reports/refund-summary",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {
+          "from": {
+            "in": "query",
+            "name": "from"
+          },
+          "to": {
+            "in": "query",
+            "name": "to"
+          }
+        },
+        "requiredArgs": []
+      }
+    ]
+  },
+  {
+    "name": "forms_order_form",
+    "description": "Get the order form. Describes the fields for orders_create right now: types, limits, where to look up valid values, coupon codes usable at this moment, and fields only your role may use. Read it before creating an order; the options change as data changes. Allowed roles: owner, support.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "safety": "read",
+    "risk": "low",
+    "variants": [
+      {
+        "operationId": "FormsController_orderForm",
+        "method": "get",
+        "path": "/forms/order",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "args": {},
+        "requiredArgs": []
+      }
+    ]
+  }
+]

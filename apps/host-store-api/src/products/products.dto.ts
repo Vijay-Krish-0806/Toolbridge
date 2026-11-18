@@ -181,7 +181,7 @@ export class BulkPriceUpdateDto {
   })
   @IsOptional()
   @IsBoolean()
-  dryRun = true;
+  dryRun: boolean = true;
 }
 
 export class PriceChangeDto {
