@@ -1,0 +1,23 @@
+{
+  "name": "@toolbridge/spec-compiler",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "inspect": "tsc -p tsconfig.build.json && node dist/scripts/inspect.js"
+  },
+  "dependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
+    "openapi-types": "12.1.3"
+  }
+}
