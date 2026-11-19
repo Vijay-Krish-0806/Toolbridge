@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import type { ToolCall } from '../llm/types.js';
-import { type ToolError, ToolExecutionError, ToolTimeoutError } from './errors.js';
+import {
+  ToolCancelledError,
+  type ToolError,
+  ToolExecutionError,
+  ToolTimeoutError,
+} from './errors.js';
 import type { ToolRegistry } from './registry.js';
 
 /**
@@ -58,8 +63,11 @@ export class ToolExecutor {
    * Runs one tool call and always returns a ToolResult. Steps:
    * 1. find the tool by name, 2. parse the arguments JSON, 3. validate with the tool's Zod schema,
    * 4. execute with a timeout, retrying retryable failures of read tools with backoff.
+   * `signal` lets the caller cancel (for example an MCP client cancelling a request): the running
+   * attempt is aborted, the result is a 'cancelled' error, and nothing is retried.
    */
-  async run(call: ToolCall): Promise<ToolResult> {
+  async run(call: ToolCall, options: { signal?: AbortSignal } = {}): Promise<ToolResult> {
+    const { signal } = options;
     const tool = this.registry.get(call.name);
     if (!tool) {
       return fail(
@@ -86,15 +94,20 @@ export class ToolExecutor {
     for (let attempt = 1; ; attempt++) {
       try {
         const output = await withTimeout(
-          (signal) => tool.execute(parsed.data, { signal }),
+          (attemptSignal) => tool.execute(parsed.data, { signal: attemptSignal }),
           this.timeoutMs,
+          signal,
         );
         const content = JSON.stringify(output ?? null);
         return { ok: true, content: truncateResult(content, this.maxResultChars) };
       } catch (thrown) {
         const error = toToolError(thrown);
         // Never retry writes: if the first attempt reached the server, a retry could repeat it.
-        const canRetry = error.retryable && tool.safety === 'read' && attempt <= this.maxRetries;
+        const canRetry =
+          error.retryable &&
+          tool.safety === 'read' &&
+          attempt <= this.maxRetries &&
+          signal?.aborted !== true;
         if (!canRetry) return { ok: false, error };
 
         const delayMs = backoffDelay(this.baseDelayMs, attempt);
@@ -105,7 +118,6 @@ export class ToolExecutor {
   }
 }
 
-/** Shorthand for a failed result with a non-retryable error. */
 /**
  * About 2,000 to 2,500 tokens: room for several results in a 16K context. Ollama silently drops
  * messages that do not fit (the failure lab saw a 59,122-character result vanish completely), so
@@ -136,25 +148,36 @@ function fail(code: ToolError['code'], message: string): ToolResult {
 /**
  * Runs `run` but rejects with ToolTimeoutError after `timeoutMs`. The signal is aborted too, so a
  * tool that passes it to fetch stops the request. The race guarantees the limit even if a tool
- * ignores the signal.
+ * ignores the signal. If the caller's `parent` signal fires first, the attempt is aborted and
+ * rejected with ToolCancelledError instead.
  */
 async function withTimeout<T>(
   run: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
+  parent?: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutError = new ToolTimeoutError(timeoutMs);
+  const cancelledError = new ToolCancelledError();
   let timer: NodeJS.Timeout | undefined;
-  const timedOut = new Promise<never>((_, reject) => {
+  let onCancel: (() => void) | undefined;
+  const stopped = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       controller.abort(timeoutError);
       reject(timeoutError);
     }, timeoutMs);
+    onCancel = () => {
+      controller.abort(cancelledError);
+      reject(cancelledError);
+    };
+    if (parent?.aborted === true) onCancel();
+    else parent?.addEventListener('abort', onCancel, { once: true });
   });
   try {
-    return await Promise.race([run(controller.signal), timedOut]);
+    return await Promise.race([run(controller.signal), stopped]);
   } finally {
     clearTimeout(timer);
+    if (onCancel) parent?.removeEventListener('abort', onCancel);
   }
 }
 
@@ -169,6 +192,9 @@ function backoffDelay(baseDelayMs: number, attempt: number): number {
 
 /** Converts anything a tool threw into the normalized ToolError shape. Unknown errors are our bugs. */
 function toToolError(thrown: unknown): ToolError {
+  if (thrown instanceof ToolCancelledError) {
+    return { code: 'cancelled', message: thrown.message, retryable: false };
+  }
   if (thrown instanceof ToolTimeoutError) {
     return { code: 'timeout', message: thrown.message, retryable: true };
   }

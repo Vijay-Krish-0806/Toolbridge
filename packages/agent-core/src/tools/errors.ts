@@ -6,6 +6,7 @@ export type ToolErrorCode =
   | 'network' // could not reach the API at all
   | 'http_error' // the API answered with an error status (see `status`)
   | 'blocked' // refused for safety before sending (private address, bad path, redirect)
+  | 'cancelled' // the caller cancelled the call (for example an MCP client)
   | 'internal'; // a bug in our own tool code
 
 /** A failure in the normalized shape that goes back to the model. */
@@ -47,5 +48,14 @@ export class ToolTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`Tool timed out after ${String(timeoutMs)} ms`);
     this.name = 'ToolTimeoutError';
+  }
+}
+
+/** Raised when the caller cancels a running tool call (its AbortSignal fired). */
+export class ToolCancelledError extends Error {
+  /** Fixed message: the model or client only needs to know it was cancelled on purpose. */
+  constructor() {
+    super('Tool call was cancelled by the caller');
+    this.name = 'ToolCancelledError';
   }
 }

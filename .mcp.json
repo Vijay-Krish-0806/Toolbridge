@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "toolbridge": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["packages/mcp-server/dist/stdio.js"]
+    }
+  }
+}
