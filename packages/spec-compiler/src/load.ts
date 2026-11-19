@@ -32,18 +32,24 @@ function resolveOptions(options: LoadOptions) {
 
 /**
  * Step 1 (cheap): reads and parses the spec (JSON or YAML), without resolving `$ref`s or
- * validating. `source` is a local file path or an http(s) URL.
+ * validating. `source` is a local file path, an http(s) URL, or an already-parsed document (an
+ * upload). An uploaded document is untrusted: external `$ref`s stay disabled for it too.
  * Before -> after: a file path -> the raw document object, `$ref`s still in place.
  */
 export async function parseSpec(
-  source: string,
+  source: string | OpenAPI.Document,
   options: LoadOptions = {},
 ): Promise<OpenAPI.Document> {
   try {
     return await SwaggerParser.parse(source, { resolve: resolveOptions(options) });
   } catch (error) {
-    throw loadError(source, error);
+    throw loadError(sourceLabel(source), error);
   }
+}
+
+/** How a source is named in error messages: its path or URL, or "uploaded spec". */
+export function sourceLabel(source: string | OpenAPI.Document): string {
+  return typeof source === 'string' ? source : 'uploaded spec';
 }
 
 /**

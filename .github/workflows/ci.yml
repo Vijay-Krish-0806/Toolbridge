@@ -49,6 +49,8 @@ jobs:
       - run: curl --silent --fail --retry 60 --retry-connrefused --retry-all-errors --retry-delay 1 http://127.0.0.1:3000/health
       - run: pnpm check:access
       - run: pnpm test:e2e
+      # Platform API: tenant isolation, spec lifecycle, limits and SSRF, on its own e2e database.
+      - run: pnpm test:e2e:platform
       - if: failure()
         run: cat host.log
       - if: always()

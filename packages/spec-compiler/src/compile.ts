@@ -5,7 +5,9 @@
  */
 import { type CompileCache, type CompiledSpec } from './cache.js';
 import { contentHash, sha256 } from './hash.js';
-import { type LoadOptions, parseSpec, validateSpec } from './load.js';
+import type { OpenAPI } from 'openapi-types';
+
+import { type LoadOptions, parseSpec, sourceLabel, validateSpec } from './load.js';
 import { normalize } from './normalize.js';
 import { compileTools } from './tools/generate.js';
 import { parseOverrides } from './tools/overrides.js';
@@ -35,11 +37,12 @@ export interface CompileSpecResult extends CompiledSpec {
  * - the spec content (canonical, so formatting and key order do not matter),
  * - the overrides (they change names, risk, merges and result fields),
  * - COMPILER_VERSION (a fix in our own code must not be hidden by an old cache entry).
+ * `source` is a file path, a URL, or an already-parsed document (an upload).
  * Before -> after: `'specs/host-store.json'` -> `{ key, specHash, model, tools, cached: false }`;
  * the same call again -> the same entry with `cached: true`.
  */
 export async function compileSpec(
-  source: string,
+  source: string | OpenAPI.Document,
   options: CompileSpecOptions = {},
 ): Promise<CompileSpecResult> {
   const doc = await parseSpec(source, options.load);
@@ -53,7 +56,7 @@ export async function compileSpec(
   if (hit !== undefined) return { ...hit, cached: true };
 
   const { model, warnings: normalizeWarnings } = normalize(
-    await validateSpec(doc, source, options.load),
+    await validateSpec(doc, sourceLabel(source), options.load),
   );
   const { tools, warnings: toolWarnings } = compileTools(model, overrides);
   const entry: CompiledSpec = {

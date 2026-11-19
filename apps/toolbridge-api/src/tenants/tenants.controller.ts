@@ -1,0 +1,47 @@
+import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
+
+import { AdminOnly, CurrentCaller, type Caller } from '../auth/auth.decorators.js';
+import { CreateApiKeyDto, CreateTenantDto } from './tenants.dto.js';
+import { type ApiKeyView, TenantsService } from './tenants.service.js';
+
+/** Platform administration: creating tenants. Admin key only. */
+@Controller('admin/tenants')
+@AdminOnly()
+export class AdminTenantsController {
+  constructor(private readonly tenants: TenantsService) {}
+
+  /** Creates a tenant and returns its first API key (shown once). */
+  @Post()
+  create(@Body() dto: CreateTenantDto) {
+    return this.tenants.create(dto.name);
+  }
+}
+
+/** The calling tenant's own account and API keys. */
+@Controller()
+export class TenantController {
+  constructor(private readonly tenants: TenantsService) {}
+
+  /** Which tenant this key belongs to. */
+  @Get('me')
+  me(@CurrentCaller() caller: Caller) {
+    return this.tenants.get(caller.tenantId);
+  }
+
+  @Get('api-keys')
+  listKeys(@CurrentCaller() caller: Caller): Promise<ApiKeyView[]> {
+    return this.tenants.listKeys(caller.tenantId);
+  }
+
+  /** A new key (for rotation: create the new one, switch clients, revoke the old one). */
+  @Post('api-keys')
+  createKey(@CurrentCaller() caller: Caller, @Body() dto: CreateApiKeyDto) {
+    return this.tenants.createKey(caller.tenantId, dto.label);
+  }
+
+  @Delete('api-keys/:keyId')
+  @HttpCode(200)
+  revokeKey(@CurrentCaller() caller: Caller, @Param('keyId') keyId: string): Promise<ApiKeyView> {
+    return this.tenants.revokeKey(caller.tenantId, keyId);
+  }
+}
