@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "inspect": "tsc -p tsconfig.build.json && node dist/scripts/inspect.js"
+    "inspect": "tsc -p tsconfig.build.json && node dist/scripts/inspect.js",
+    "diff": "tsc -p tsconfig.build.json && node dist/scripts/diff.js"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "13.1.0",

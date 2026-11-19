@@ -6,10 +6,14 @@
  *   --tools      also compiles tools and prints a summary (and one line per tool, up to 100)
  *   --overrides  an overrides JSON file; implies --tools
  *   --json       writes the ApiModel (or, with --tools, the tools) to a file, to read or diff it
+ *   --cache dir  compiles through the content-addressed cache in `dir` (Step 2.4) and reports
+ *                whether it was a hit; use with --overrides to include them in the key
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+import { FileCache } from '../cache.js';
+import { compileSpec } from '../compile.js';
 import { loadSpec } from '../load.js';
 import type { ApiModel } from '../model.js';
 import { normalize } from '../normalize.js';
@@ -24,6 +28,7 @@ interface Args {
   showTools: boolean;
   overridesFile?: string;
   jsonOut?: string;
+  cacheDir?: string;
 }
 
 /**
@@ -47,18 +52,24 @@ function parseArgs(argv: string[]): Args {
   };
   const jsonOut = pathAfter('--json');
   const overridesFile = pathAfter('--overrides');
+  const cacheDir = pathAfter('--cache');
   return {
     source: /^https?:\/\//i.test(source) ? source : resolve(base, source),
     showOps: flags.includes('--ops'),
     showTools: flags.includes('--tools') || overridesFile !== undefined,
     ...(overridesFile !== undefined && { overridesFile }),
     ...(jsonOut !== undefined && { jsonOut }),
+    ...(cacheDir !== undefined && { cacheDir }),
   };
 }
 
 /** Loads, normalizes and prints counts, timings, memory and warnings; then tools if asked. */
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+  if (args.cacheDir !== undefined) {
+    await printCached(args.source, args.cacheDir, args.overridesFile);
+    return;
+  }
 
   const t0 = performance.now();
   const doc = await loadSpec(args.source);
@@ -163,6 +174,33 @@ async function printTools(
     }
   }
   return tools;
+}
+
+/**
+ * Compiles through the file cache and reports hit or miss, the hashes that make up the key, and
+ * the time taken. Run it twice: the second run should be a hit and much faster.
+ */
+async function printCached(
+  source: string,
+  cacheDir: string,
+  overridesFile: string | undefined,
+): Promise<void> {
+  const overrides: unknown =
+    overridesFile === undefined ? undefined : JSON.parse(await readFile(overridesFile, 'utf8'));
+  const t0 = performance.now();
+  const result = await compileSpec(source, {
+    cache: new FileCache(cacheDir),
+    ...(overrides !== undefined && { overrides }),
+  });
+  const ms = performance.now() - t0;
+  console.log(
+    `${result.model.title} ${result.model.version}: ${result.cached ? 'CACHE HIT' : 'cache miss, compiled and stored'} in ${ms.toFixed(0)} ms`,
+  );
+  console.log(`  spec hash:      ${result.specHash.slice(0, 16)}...`);
+  console.log(`  overrides hash: ${result.overridesHash.slice(0, 16)}...`);
+  console.log(`  compiler:       ${result.compilerVersion}`);
+  console.log(`  cache key:      ${result.key.slice(0, 16)}... (${cacheDir})`);
+  console.log(`  tools:          ${String(result.tools.length)}`);
 }
 
 /** Prints the warning count and the first ten warnings. */

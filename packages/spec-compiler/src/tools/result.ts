@@ -16,7 +16,7 @@ export function unknownResultFields(
 ): string[] {
   const success = op.responses.find((r) => r.status.startsWith('2') && r.schema !== undefined);
   if (success?.schema === undefined) return fields;
-  const item = itemSchema(resolve(success.schema, refs), refs);
+  const item = itemSchema(resolveSchema(success.schema, refs), refs);
   return fields.filter((path) => !hasPath(item, path.split('.'), refs));
 }
 
@@ -24,10 +24,10 @@ export function unknownResultFields(
 function itemSchema(schema: JsonSchema, refs: Record<string, JsonSchema>): JsonSchema {
   const props = schema.properties as Record<string, JsonSchema> | undefined;
   const pageItems = props?.items;
-  if (pageItems !== undefined && resolve(pageItems, refs).type === 'array') {
-    return resolve(resolve(pageItems, refs).items as JsonSchema, refs);
+  if (pageItems !== undefined && resolveSchema(pageItems, refs).type === 'array') {
+    return resolveSchema(resolveSchema(pageItems, refs).items as JsonSchema, refs);
   }
-  if (schema.type === 'array') return resolve(schema.items as JsonSchema, refs);
+  if (schema.type === 'array') return resolveSchema(schema.items as JsonSchema, refs);
   return schema;
 }
 
@@ -35,7 +35,7 @@ function itemSchema(schema: JsonSchema, refs: Record<string, JsonSchema>): JsonS
 function hasPath(schema: JsonSchema, path: string[], refs: Record<string, JsonSchema>): boolean {
   const [head, ...rest] = path;
   if (head === undefined) return true;
-  const props = resolve(schema, refs).properties as Record<string, JsonSchema> | undefined;
+  const props = resolveSchema(schema, refs).properties as Record<string, JsonSchema> | undefined;
   const next = props?.[head];
   return next !== undefined && hasPath(next, rest, refs);
 }
@@ -44,7 +44,10 @@ function hasPath(schema: JsonSchema, path: string[], refs: Record<string, JsonSc
  * Follows a leftover `$ref` (cyclic schemas) and unwraps a one-item `allOf`, which NestJS uses
  * for nested DTOs. Anything else is returned as-is.
  */
-function resolve(schema: JsonSchema | undefined, refs: Record<string, JsonSchema>): JsonSchema {
+export function resolveSchema(
+  schema: JsonSchema | undefined,
+  refs: Record<string, JsonSchema>,
+): JsonSchema {
   let current = schema ?? {};
   for (let i = 0; i < 5; i++) {
     if (typeof current.$ref === 'string' && refs[current.$ref] !== undefined) {
