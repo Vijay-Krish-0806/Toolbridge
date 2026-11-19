@@ -21,6 +21,10 @@ const fromDist = async <T>(file: string): Promise<T> =>
 /** A fixed test-only admin key, so the tests never depend on the developer's real key. */
 export const ADMIN_KEY = 'e2e-admin-key-0123456789-abcdefghijklmnop';
 
+/** Fixed test-only master keys (base64 of 32 bytes), for encryption and rotation tests. */
+export const MASTER_KEY_V1 = Buffer.alloc(32, 1).toString('base64');
+export const MASTER_KEY_V2 = Buffer.alloc(32, 2).toString('base64');
+
 /** The host store spec, used as every tenant's sample API. */
 export function hostSpec(): Record<string, unknown> {
   return JSON.parse(
@@ -45,8 +49,12 @@ export interface Harness {
  * Boots the real app in-process on an empty e2e database (never your development data), with
  * small limits so each one can be hit: 3 specs per tenant, 512 KB bodies, a 2 s fetch timeout,
  * and only "localhost" allowed to resolve to a private address.
+ * `env` overrides settings (for example the master key); `keepDatabase` restarts on the same data.
  */
-export async function startHarness(): Promise<Harness> {
+export async function startHarness(
+  env: Record<string, string> = {},
+  options: { keepDatabase?: boolean } = {},
+): Promise<Harness> {
   const config = loadConfig({
     ...process.env,
     PLATFORM_MONGO_DB: 'toolbridge_e2e',
@@ -55,12 +63,16 @@ export async function startHarness(): Promise<Harness> {
     MAX_SPECS_PER_TENANT: '3',
     MAX_SPEC_BYTES: String(512 * 1024),
     SPEC_FETCH_TIMEOUT_MS: '2000',
+    PLATFORM_MASTER_KEY: MASTER_KEY_V1,
+    PLATFORM_MASTER_KEY_VERSION: 'v1',
+    PLATFORM_PREVIOUS_MASTER_KEYS: '',
+    ...env,
   });
   const connection = await mongoose
     .createConnection(config.MONGO_URI, { dbName: config.PLATFORM_MONGO_DB })
     .asPromise();
   try {
-    await connection.dropDatabase();
+    if (!options.keepDatabase) await connection.dropDatabase();
   } finally {
     await connection.close();
   }

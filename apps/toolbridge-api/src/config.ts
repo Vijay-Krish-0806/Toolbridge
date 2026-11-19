@@ -14,6 +14,23 @@ const hostList = z
       .filter((h) => h !== ''),
   );
 
+/** base64 of exactly 32 bytes -> the key bytes; anything else -> undefined. */
+function decodeMasterKey(encoded: string): Buffer | undefined {
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(encoded)) return undefined;
+  const key = Buffer.from(encoded, 'base64');
+  return key.length === 32 ? key : undefined;
+}
+
+/** A master key from the environment: must decode to exactly 32 bytes. Never echoed in errors. */
+const masterKey = z.string().transform((value, ctx) => {
+  const key = decodeMasterKey(value);
+  if (!key) {
+    ctx.addIssue({ code: 'custom', message: 'must be base64 of exactly 32 bytes' });
+    return z.NEVER;
+  }
+  return key;
+});
+
 const envSchema = z.object({
   MONGO_URI: z
     .string()
@@ -43,6 +60,39 @@ const envSchema = z.object({
   MAX_SPECS_PER_TENANT: z.coerce.number().int().min(1).default(20),
   /** How long fetching a spec by URL may take. */
   SPEC_FETCH_TIMEOUT_MS: z.coerce.number().int().min(100).default(15_000),
+  /**
+   * The master key (KEK) that wraps every data key: base64 of exactly 32 random bytes
+   * (AES-256). Checked at startup, so a short or malformed key never reaches encryption.
+   */
+  PLATFORM_MASTER_KEY: masterKey,
+  /** Label stored beside every wrapped data key, so rotation knows which master key wrapped it. */
+  PLATFORM_MASTER_KEY_VERSION: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,32}$/, 'letters, digits, _ or -, at most 32')
+    .default('v1'),
+  /**
+   * Older master keys still needed to unwrap data keys during a rotation:
+   * "v1=<base64>,v0=<base64>". Remove an entry once nothing is wrapped with it any more.
+   */
+  PLATFORM_PREVIOUS_MASTER_KEYS: z
+    .string()
+    .default('')
+    .transform((value, ctx) => {
+      const keys: Record<string, Buffer> = {};
+      for (const entry of value
+        .split(',')
+        .map((e) => e.trim())
+        .filter((e) => e !== '')) {
+        const [version, encoded] = entry.split('=', 2);
+        const key = decodeMasterKey(encoded ?? '');
+        if (!version || !key) {
+          ctx.addIssue({ code: 'custom', message: `invalid entry "${version ?? ''}=…"` });
+          return z.NEVER;
+        }
+        keys[version] = key;
+      }
+      return keys;
+    }),
 });
 
 export type PlatformConfig = z.infer<typeof envSchema>;

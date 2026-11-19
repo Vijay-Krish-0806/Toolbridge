@@ -21,5 +21,6 @@ export function mongooseCollection<T>(model: Model<T>): Collection<T> {
     updateOne: async (filter, set) =>
       (await model.updateOne(filterOf(filter), { $set: set }).exec()).matchedCount,
     countDocuments: (filter) => model.countDocuments(filterOf(filter)).exec(),
+    deleteOne: async (filter) => (await model.deleteOne(filterOf(filter)).exec()).deletedCount,
   };
 }

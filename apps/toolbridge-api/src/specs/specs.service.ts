@@ -9,6 +9,7 @@ import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import type { SafeHttpClient } from '@toolbridge/agent-core';
 import {
   compileSpec,
+  type CompiledSpec,
   type CompileSpecResult,
   diffModels,
   OverridesError,
@@ -18,7 +19,7 @@ import { type Connection, isValidObjectId, type Model, Types } from 'mongoose';
 
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
-import { PLATFORM_CONFIG, SPEC_FETCH_CLIENT } from '../common/core.module.js';
+import { PLATFORM_CONFIG, OUTBOUND_HTTP } from '../common/core.module.js';
 import type { PlatformConfig } from '../config.js';
 import {
   MODEL,
@@ -57,7 +58,7 @@ export class SpecsService {
 
   constructor(
     @Inject(PLATFORM_CONFIG) private readonly config: PlatformConfig,
-    @Inject(SPEC_FETCH_CLIENT) private readonly fetchClient: SafeHttpClient,
+    @Inject(OUTBOUND_HTTP) private readonly fetchClient: SafeHttpClient,
     @InjectConnection() connection: Connection,
     @InjectModel(MODEL.Spec.name) private readonly specModel: Model<Spec>,
     @InjectModel(MODEL.SpecVersion.name) private readonly versionModel: Model<SpecVersion>,
@@ -199,6 +200,36 @@ export class SpecsService {
     const status = enabled && tool.status === 'needs_review' ? 'active' : tool.status;
     await db.tools.updateOne({ _id: tool._id }, { enabled, status, updatedAt: new Date() });
     return { name: tool.name, enabled, status, safety: tool.safety, risk: tool.risk };
+  }
+
+  /** One spec of the tenant, or 404 (same rules as every other spec route). */
+  async requireSpec(tenantId: Types.ObjectId, specId: string): Promise<Spec> {
+    return this.findSpec(this.stores(tenantId), specId);
+  }
+
+  /**
+   * What a tool call needs: the tool's definition in the current version, the spec's security
+   * schemes, and the tenant's setting for that tool (null when the tool is unknown).
+   */
+  async toolForCall(
+    tenantId: Types.ObjectId,
+    spec: Spec,
+    toolName: string,
+  ): Promise<{ compiled: CompiledSpec; setting: ToolSetting | null }> {
+    const compiled = await this.currentCompiled(tenantId, spec);
+    const setting = await this.stores(tenantId).tools.findOne({ specId: spec._id, name: toolName });
+    return { compiled, setting };
+  }
+
+  /** The compiled current version of a spec (tools, model, security schemes). */
+  async currentCompiled(tenantId: Types.ObjectId, spec: Spec): Promise<CompiledSpec> {
+    const current = await this.stores(tenantId).versions.findOne({
+      specId: spec._id,
+      version: spec.currentVersion,
+    });
+    const compiled = current ? await this.compiled.get(current.compileKey) : undefined;
+    if (!compiled) throw new Error(`Spec ${spec._id.toHexString()} has no stored current version.`);
+    return compiled;
   }
 
   /** Builds this request's tenant-scoped stores. Every tenant-data access goes through them. */

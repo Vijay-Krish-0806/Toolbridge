@@ -34,6 +34,10 @@ function recordingCollection(): { collection: Collection<Doc>; filters: Filter[]
       filters.push(filter);
       return Promise.resolve(0);
     },
+    deleteOne: (filter) => {
+      filters.push(filter);
+      return Promise.resolve(0);
+    },
   };
   return { collection, filters };
 }
@@ -56,7 +60,8 @@ describe('TenantScoped', () => {
     await scoped.findOne({ _id: new Types.ObjectId() });
     await scoped.updateOne({ name: 'shop' }, { name: 'store' });
     await scoped.countDocuments();
-    expect(filters).toHaveLength(4);
+    await scoped.deleteOne({ name: 'shop' });
+    expect(filters).toHaveLength(5);
     for (const filter of filters) expect(filter.tenantId).toEqual(TENANT);
   });
 

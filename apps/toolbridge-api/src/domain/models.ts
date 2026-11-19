@@ -6,6 +6,8 @@ import { type Connection, Schema, type Types } from 'mongoose';
 
 import type { RiskLevel, SafetyClass } from '@toolbridge/spec-compiler';
 
+import type { EncryptedSecret } from '../crypto/envelope.js';
+
 export interface Tenant {
   _id: Types.ObjectId;
   name: string;
@@ -79,6 +81,31 @@ export interface ToolSetting {
   updatedAt: Date;
 }
 
+export type AuthKind = 'none' | 'static' | 'login';
+
+/**
+ * Where a spec's API lives and how to authenticate to it. One per spec. `auth` holds only
+ * non-secret metadata; every secret value is inside `secret`, envelope-encrypted with
+ * AAD "tenant:<tenantId>:connection:<_id>".
+ */
+export interface ApiConnection {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  specId: Types.ObjectId;
+  baseUrl: string;
+  auth: {
+    kind: AuthKind;
+    /** static: the security scheme names that have a secret (not the secrets). */
+    schemes: string[];
+    /** login: where to post the credentials and which response field holds the token. */
+    loginPath: string | null;
+    tokenField: string | null;
+  };
+  secret: EncryptedSecret | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 const tenantSchema = new Schema<Tenant>({
   name: { type: String, required: true },
   createdAt: { type: Date, required: true },
@@ -133,6 +160,22 @@ const toolSettingSchema = new Schema<ToolSetting>({
 });
 toolSettingSchema.index({ tenantId: 1, specId: 1, name: 1 }, { unique: true });
 
+const connectionSchema = new Schema<ApiConnection>({
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  specId: { type: Schema.Types.ObjectId, required: true },
+  baseUrl: { type: String, required: true },
+  auth: {
+    kind: { type: String, enum: ['none', 'static', 'login'], required: true },
+    schemes: { type: [String], default: [] },
+    loginPath: { type: String, default: null },
+    tokenField: { type: String, default: null },
+  },
+  secret: { type: Schema.Types.Mixed, default: null },
+  createdAt: { type: Date, required: true },
+  updatedAt: { type: Date, required: true },
+});
+connectionSchema.index({ tenantId: 1, specId: 1 }, { unique: true });
+
 /** Model names and schemas in one list, shared by the Nest modules and index creation. */
 export const MODEL = {
   Tenant: { name: 'Tenant', schema: tenantSchema },
@@ -140,6 +183,7 @@ export const MODEL = {
   Spec: { name: 'Spec', schema: specSchema },
   SpecVersion: { name: 'SpecVersion', schema: specVersionSchema },
   ToolSetting: { name: 'ToolSetting', schema: toolSettingSchema },
+  ApiConnection: { name: 'ApiConnection', schema: connectionSchema },
 } as const;
 
 /**

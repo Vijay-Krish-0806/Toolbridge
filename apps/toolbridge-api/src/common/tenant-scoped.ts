@@ -19,6 +19,8 @@ export interface Collection<T> {
   /** Applies `$set`; returns how many documents matched. */
   updateOne(filter: Filter, set: Filter): Promise<number>;
   countDocuments(filter: Filter): Promise<number>;
+  /** Returns how many documents were deleted (0 or 1). */
+  deleteOne(filter: Filter): Promise<number>;
 }
 
 /** Thrown when code tries to use tenant data without a valid tenant, or to cross tenants. */
@@ -65,6 +67,11 @@ export class TenantScoped<T extends { tenantId: Types.ObjectId }> {
   updateOne(filter: Filter, set: Filter): Promise<number> {
     if ('tenantId' in set) throw new TenantScopeError('tenantId cannot be changed.');
     return this.collection.updateOne(this.scope(filter), set);
+  }
+
+  /** Deletes one document of this tenant. */
+  deleteOne(filter: Filter): Promise<number> {
+    return this.collection.deleteOne(this.scope(filter));
   }
 
   /** Counts this tenant's matching documents. */

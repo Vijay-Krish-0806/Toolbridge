@@ -15,7 +15,13 @@ import type { Connection } from 'mongoose';
 
 import { Public } from './auth/auth.decorators.js';
 import { PlatformAuthGuard } from './auth/platform-auth.guard.js';
-import { CoreModule, SPEC_FETCH_CLIENT } from './common/core.module.js';
+import { CoreModule, OUTBOUND_HTTP } from './common/core.module.js';
+import { CallsService } from './connections/calls.service.js';
+import {
+  AdminConnectionsController,
+  ConnectionsController,
+} from './connections/connections.controller.js';
+import { ConnectionsService } from './connections/connections.service.js';
 import type { PlatformConfig } from './config.js';
 import { createIndexes, MODEL } from './domain/models.js';
 import { SpecsController } from './specs/specs.controller.js';
@@ -38,7 +44,7 @@ export class HealthController {
 export class Lifecycle implements OnModuleInit, OnApplicationShutdown {
   constructor(
     @InjectConnection() private readonly connection: Connection,
-    @Inject(SPEC_FETCH_CLIENT) private readonly fetchClient: SafeHttpClient,
+    @Inject(OUTBOUND_HTTP) private readonly fetchClient: SafeHttpClient,
   ) {}
 
   /** The unique (tenantId, ...) indexes are part of correctness, so they exist before any request. */
@@ -66,12 +72,21 @@ export class AppModule {
         }),
         MongooseModule.forFeature(Object.values(MODEL)),
       ],
-      controllers: [HealthController, AdminTenantsController, TenantController, SpecsController],
+      controllers: [
+        HealthController,
+        AdminTenantsController,
+        AdminConnectionsController,
+        TenantController,
+        SpecsController,
+        ConnectionsController,
+      ],
       providers: [
         // Global: every route needs a key unless it is marked @Public().
         { provide: APP_GUARD, useClass: PlatformAuthGuard },
         TenantsService,
         SpecsService,
+        ConnectionsService,
+        CallsService,
         Lifecycle,
       ],
     };
