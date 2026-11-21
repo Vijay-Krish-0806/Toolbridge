@@ -62,13 +62,7 @@ export async function selectTools(
   config: NodeConfig,
 ): Promise<AgentStateUpdate> {
   const { registry, selector, access } = contextOf(config);
-  const tools = await selectToolMenu(
-    registry,
-    selector,
-    state.messages,
-    emitterOf(config),
-    access,
-  );
+  const tools = await selectToolMenu(registry, selector, state.messages, emitterOf(config), access);
   return { tools };
 }
 

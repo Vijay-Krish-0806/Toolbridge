@@ -65,9 +65,9 @@ describe('matches', () => {
 describe('parsePolicy', () => {
   it('rejects unknown fields, bad patterns and a missing version', () => {
     expect(() => parsePolicy({ roles: {} })).toThrow(/Invalid policy/);
-    expect(() =>
-      parsePolicy({ version: 1, roles: { owner: { allow: ['orders.*'] } } }),
-    ).toThrow(/tool-name characters/);
+    expect(() => parsePolicy({ version: 1, roles: { owner: { allow: ['orders.*'] } } })).toThrow(
+      /tool-name characters/,
+    );
     // A typo such as "allows" must fail, not silently grant nothing.
     expect(() => parsePolicy({ version: 1, roles: { owner: { allows: ['*'] } } })).toThrow(
       /Invalid policy/,

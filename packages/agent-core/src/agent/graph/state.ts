@@ -42,9 +42,12 @@ export const AgentState = new StateSchema({
    * node would have to copy the whole conversation to add one message, and two nodes writing in
    * the same step would overwrite each other.
    */
-  messages: new ReducedValue(chatMessages.default(() => []), {
-    reducer: (current, update) => current.concat(update),
-  }),
+  messages: new ReducedValue(
+    chatMessages.default(() => []),
+    {
+      reducer: (current, update) => current.concat(update),
+    },
+  ),
 
   /** The tool menu, chosen once at the start of the run (last-value channel). */
   tools: z.array(z.custom<ToolDefinition>()).default(() => []),

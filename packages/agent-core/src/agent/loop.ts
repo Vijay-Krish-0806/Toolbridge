@@ -27,13 +27,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const emit = input.onEvent ?? (() => undefined);
   const messages = [...input.messages];
-  const tools = await selectToolMenu(
-    input.registry,
-    input.selector,
-    messages,
-    emit,
-    input.access,
-  );
+  const tools = await selectToolMenu(input.registry, input.selector, messages, emit, input.access);
   const offered = new Set(tools.map((tool) => tool.name));
   let usage = emptyUsage();
   let consecutiveErrors = 0;
