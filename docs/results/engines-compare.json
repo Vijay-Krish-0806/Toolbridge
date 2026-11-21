@@ -1,0 +1,175 @@
+{
+  "model": "toolbridge-qwen3.5-4b-16k",
+  "overhead": [
+    {
+      "engine": "loop",
+      "runs": 300,
+      "meanMs": 0.031,
+      "p50Ms": 0.029,
+      "p95Ms": 0.05
+    },
+    {
+      "engine": "graph",
+      "runs": 300,
+      "meanMs": 5.15,
+      "p50Ms": 2.544,
+      "p95Ms": 23.555
+    }
+  ],
+  "live": [
+    {
+      "question": "What is the status of order ORD-10007?",
+      "engine": "loop",
+      "tools": [
+        "get_order"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2785,
+      "outputTokens": 126,
+      "seconds": 61.4,
+      "answerChars": 47
+    },
+    {
+      "question": "What is the status of order ORD-10007?",
+      "engine": "graph",
+      "tools": [
+        "get_order"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2785,
+      "outputTokens": 211,
+      "seconds": 23.8,
+      "answerChars": 282
+    },
+    {
+      "question": "Who placed order ORD-10031? Give me their name and email.",
+      "engine": "loop",
+      "tools": [
+        "get_order",
+        "get_customer"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 3,
+      "inputTokens": 4473,
+      "outputTokens": 349,
+      "seconds": 40.9,
+      "answerChars": 89
+    },
+    {
+      "question": "Who placed order ORD-10031? Give me their name and email.",
+      "engine": "graph",
+      "tools": [
+        "get_order",
+        "get_customer"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 3,
+      "inputTokens": 4473,
+      "outputTokens": 314,
+      "seconds": 34.2,
+      "answerChars": 78
+    },
+    {
+      "question": "List the 3 most recent orders.",
+      "engine": "loop",
+      "tools": [
+        "list_orders"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2736,
+      "outputTokens": 555,
+      "seconds": 62.8,
+      "answerChars": 381
+    },
+    {
+      "question": "List the 3 most recent orders.",
+      "engine": "graph",
+      "tools": [
+        "list_orders"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2736,
+      "outputTokens": 530,
+      "seconds": 57.9,
+      "answerChars": 340
+    },
+    {
+      "question": "Which products are in the catalog? Just give me the first five names.",
+      "engine": "loop",
+      "tools": [
+        "list_products"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2660,
+      "outputTokens": 235,
+      "seconds": 24.1,
+      "answerChars": 132
+    },
+    {
+      "question": "Which products are in the catalog? Just give me the first five names.",
+      "engine": "graph",
+      "tools": [
+        "list_products"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2648,
+      "outputTokens": 211,
+      "seconds": 21.1,
+      "answerChars": 142
+    },
+    {
+      "question": "Show me order ORD-99999.",
+      "engine": "loop",
+      "tools": [
+        "get_order"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2504,
+      "outputTokens": 145,
+      "seconds": 13.9,
+      "answerChars": 75
+    },
+    {
+      "question": "Show me order ORD-99999.",
+      "engine": "graph",
+      "tools": [
+        "get_order"
+      ],
+      "stopReason": "answer",
+      "llmCalls": 2,
+      "inputTokens": 2504,
+      "outputTokens": 127,
+      "seconds": 12.2,
+      "answerChars": 68
+    },
+    {
+      "question": "Hi! What can you help me with?",
+      "engine": "loop",
+      "tools": [],
+      "stopReason": "answer",
+      "llmCalls": 1,
+      "inputTokens": 1204,
+      "outputTokens": 372,
+      "seconds": 38.2,
+      "answerChars": 1027
+    },
+    {
+      "question": "Hi! What can you help me with?",
+      "engine": "graph",
+      "tools": [],
+      "stopReason": "answer",
+      "llmCalls": 1,
+      "inputTokens": 1204,
+      "outputTokens": 320,
+      "seconds": 37,
+      "answerChars": 741
+    }
+  ]
+}

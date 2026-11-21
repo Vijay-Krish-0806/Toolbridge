@@ -3,7 +3,7 @@
  * (for example every line with one runId) instead of searching text.
  */
 import { type Logger, pino } from 'pino';
-import type { AgentEvent } from '../agent/loop.js';
+import type { AgentEvent } from '../agent/run-types.js';
 import type { RetryEvent } from '../tools/executor.js';
 
 /**

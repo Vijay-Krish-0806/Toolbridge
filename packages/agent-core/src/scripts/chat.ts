@@ -9,6 +9,8 @@
  *     tools picked by vector search (Step 3.2; needs MongoDB and the embedding model)
  *   pnpm --filter @toolbridge/agent-core chat --openapi --knowledge "question"  add the
  *     knowledge_search tool over knowledge/host-store and check the answer's citations (Step 3.3)
+ *   pnpm --filter @toolbridge/agent-core chat --engine loop "question"  run the raw loop instead of
+ *     the LangGraph engine, the default since ADR 0025 (Step 4.1; works with every flag above)
  * Each run is logged as JSON lines to logs/agent.ndjson, tagged with its runId.
  */
 import { randomUUID } from 'node:crypto';
@@ -22,7 +24,8 @@ import {
 } from '@toolbridge/retrieval';
 import type { ToolDefinition as CompiledTool } from '@toolbridge/spec-compiler';
 import { z } from 'zod';
-import { type AgentEvent, type AgentLimits, type AgentRunResult, runAgent } from '../agent/loop.js';
+import { ENGINES, type EngineName, parseEngineName } from '../agent/engines.js';
+import type { AgentEvent, AgentLimits, AgentRunResult } from '../agent/run-types.js';
 import { checkCitations, citationWarning, passageIds } from '../agent/citations.js';
 import { storeAgentSystemPrompt } from '../agent/system-prompt.js';
 import type { ToolSelector } from '../agent/tool-selector.js';
@@ -171,8 +174,10 @@ async function createSession(options: {
   openapi: boolean;
   retrieveK: number | undefined;
   knowledge: boolean;
+  engine: EngineName;
 }) {
   const { limits, openapi, retrieveK } = options;
+  const runEngine = ENGINES[options.engine];
   const llmConfig = loadLLMConfig();
   const llm = new OpenAICompatibleProvider(llmConfig);
   const generated = openapi ? await createGeneratedTools() : undefined;
@@ -226,7 +231,7 @@ async function createSession(options: {
 
       let run: AgentRunResult;
       try {
-        run = await runAgent({
+        run = await runEngine({
           llm,
           registry,
           executor,
@@ -280,6 +285,7 @@ async function main(): Promise<void> {
       openapi: { type: 'boolean' },
       retrieve: { type: 'string' },
       knowledge: { type: 'boolean' },
+      engine: { type: 'string' },
     },
     allowPositionals: true,
   });
@@ -292,14 +298,16 @@ async function main(): Promise<void> {
   if (retrieveK !== undefined && values.openapi !== true) {
     throw new Error('--retrieve works with the generated tools: add --openapi.');
   }
+  const engine = parseEngineName(values.engine);
   const session = await createSession({
     limits: maxIterations === undefined ? {} : { maxIterations },
     openapi: values.openapi === true,
     retrieveK,
     knowledge: values.knowledge === true,
+    engine,
   });
   console.log(
-    `${String(session.toolCount)} tools (${values.openapi === true ? 'generated from the spec' : 'hand-written'})`,
+    `${String(session.toolCount)} tools (${values.openapi === true ? 'generated from the spec' : 'hand-written'}), engine: ${engine}`,
   );
 
   try {
