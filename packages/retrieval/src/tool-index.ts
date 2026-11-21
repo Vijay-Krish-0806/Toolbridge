@@ -184,7 +184,7 @@ export class ToolIndex {
    * `[{ toolName: 'refunds_request', score: 0.8 }, ...]` (scores illustrative).
    */
   async search(scope: IndexScope, query: string, k: number): Promise<ToolMatch[]> {
-    const [queryVector] = await this.provider.embed([query]);
+    const queryVector = await this.provider.embedQuery(query);
     return this.vectors
       .aggregate<ToolMatch>([
         {
@@ -200,6 +200,28 @@ export class ToolIndex {
         { $project: { _id: 0, toolName: 1, score: { $meta: 'vectorSearchScore' } } },
       ])
       .toArray();
+  }
+
+  /**
+   * Waits until a just-written tool can be found by its own text. The vector index follows the
+   * collection asynchronously, so a search right after `reindex` can miss new vectors (seen: the
+   * first chat question after a fresh index found nothing). Pass the last tool written; when it
+   * is searchable, the earlier writes are too.
+   */
+  async waitUntilSearchable(
+    scope: IndexScope,
+    tool: ToolDefinition,
+    timeoutMs = 120_000,
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const matches = await this.search(scope, buildToolText(tool), 10);
+      if (matches.some((m) => m.toolName === tool.name)) return;
+      if (Date.now() > deadline) {
+        throw new Error(`Tool ${tool.name} is not searchable after ${String(timeoutMs)} ms.`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
   }
 
   /** Our vector index as listed by the server (an empty array when it does not exist). */

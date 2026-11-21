@@ -22,6 +22,7 @@
     "openapi:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/openapi-check.js"
   },
   "dependencies": {
+    "@toolbridge/retrieval": "workspace:*",
     "@toolbridge/shared": "workspace:*",
     "@toolbridge/spec-compiler": "workspace:*",
     "openai": "7.57.0",

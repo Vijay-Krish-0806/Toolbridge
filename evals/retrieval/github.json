@@ -1,0 +1,305 @@
+{
+  "spec": "github",
+  "about": "Step 3.2 recall set for GitHub's REST API (1,281 tools, no overrides). Written by Claude Code, phrased the way a developer would ask, avoiding the operation summaries' wording where possible. Each expect entry is a group: the question needs one tool from every group.",
+  "source": {
+    "file": ".cache/public-specs/api.github.com.2026-03-10.json",
+    "url": "https://raw.githubusercontent.com/github/rest-api-description/main/descriptions/api.github.com/api.github.com.2026-03-10.json",
+    "sha256": "b1abdc8087137cde98404c27b498cd786b2bb3fa67045fcbd858f7ce20a3ef52",
+    "downloaded": "2026-11-21, main at c9c95fe"
+  },
+  "queries": [
+    {
+      "id": "g01",
+      "q": "open a bug in octo/app saying the login page crashes",
+      "expect": [["issues_create"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g02",
+      "q": "close issue #42 in my repo",
+      "expect": [["issues_update"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g03",
+      "q": "show the open issues in facebook/react",
+      "expect": [["issues_list_for_repo", "search_issues_and_pull_requests"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g04",
+      "q": "reply on issue 17 that it's fixed in v2",
+      "expect": [["issues_create_comment"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g05",
+      "q": "tag issue 88 as bug and urgent",
+      "expect": [["issues_add_labels"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g06",
+      "q": "hand issue 12 over to @maria",
+      "expect": [["issues_add_assignees"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g07",
+      "q": "stop people commenting on issue 5, it's getting heated",
+      "expect": [["issues_lock"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g08",
+      "q": "open a PR from feature/login into main",
+      "expect": [["pulls_create"]],
+      "tags": ["single"]
+    },
+    { "id": "g09", "q": "merge pull request 230", "expect": [["pulls_merge"]], "tags": ["single"] },
+    {
+      "id": "g10",
+      "q": "which files were touched in PR 99?",
+      "expect": [["pulls_list_files"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g11",
+      "q": "ask @sam and @lee to look at PR 14",
+      "expect": [["pulls_request_reviewers"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g12",
+      "q": "approve PR 51 with the comment LGTM",
+      "expect": [["pulls_create_review"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g13",
+      "q": "make me a new private repo called notes",
+      "expect": [["repos_create_for_authenticated_user"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g14",
+      "q": "get rid of the old-experiments repository for good",
+      "expect": [["repos_delete"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g15",
+      "q": "copy torvalds/linux into my account",
+      "expect": [["repos_create_fork"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g16",
+      "q": "publish v1.4.0 of my project",
+      "expect": [["repos_create_release"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g17",
+      "q": "what's the newest version of nodejs/node?",
+      "expect": [["repos_get_latest_release"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g18",
+      "q": "who has worked the most on vuejs/core?",
+      "expect": [["repos_list_contributors"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g19",
+      "q": "read the README of rust-lang/rust",
+      "expect": [["repos_get_readme", "repos_get_content"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g20",
+      "q": "update docs/setup.md in my repo with the new install steps",
+      "expect": [["repos_create_or_update_file_contents"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g21",
+      "q": "give @kim write access to our repo",
+      "expect": [["repos_add_collaborator"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g22",
+      "q": "require 2 approvals before anything lands on main",
+      "expect": [["repos_update_branch_protection"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g23",
+      "q": "what branches does this repo have?",
+      "expect": [["repos_list_branches"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g24",
+      "q": "what changed between v1.0 and v2.0?",
+      "expect": [["repos_compare_commits"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g25",
+      "q": "call https://example.com/hook every time someone pushes",
+      "expect": [["repos_create_webhook"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g26",
+      "q": "did CI pass on the last run?",
+      "expect": [
+        ["actions_list_workflow_runs", "actions_list_workflow_runs_for_repo", "checks_list_for_ref"]
+      ],
+      "tags": ["single"]
+    },
+    {
+      "id": "g27",
+      "q": "rerun the failed build",
+      "expect": [["actions_re_run_workflow", "actions_re_run_workflow_failed_jobs"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g28",
+      "q": "stop the workflow run that's stuck",
+      "expect": [["actions_cancel_workflow_run"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g29",
+      "q": "store our NPM token so the pipelines can use it",
+      "expect": [["actions_create_or_update_repo_secret"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g30",
+      "q": "kick off the deploy workflow by hand",
+      "expect": [["actions_create_workflow_dispatch"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g31",
+      "q": "get me the logs of the failing job",
+      "expect": [["actions_download_job_logs_for_workflow_run"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g32",
+      "q": "find code anywhere on GitHub that calls parseConfig",
+      "expect": [["search_code"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g33",
+      "q": "find popular TypeScript projects about vector search",
+      "expect": [["search_repos"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g34",
+      "q": "who am I logged in as?",
+      "expect": [["users_get_authenticated"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g35",
+      "q": "show me gaearon's profile",
+      "expect": [["users_get_by_username"]],
+      "tags": ["single"]
+    },
+    { "id": "g36", "q": "follow @sindresorhus", "expect": [["users_follow"]], "tags": ["single"] },
+    {
+      "id": "g37",
+      "q": "star vitejs/vite",
+      "expect": [["activity_star_repo_for_authenticated_user"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g38",
+      "q": "what's new in my inbox that I haven't read?",
+      "expect": [["activity_list_notifications_for_authenticated_user"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g39",
+      "q": "how many API calls do I have left this hour?",
+      "expect": [["rate_limit_get"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g40",
+      "q": "what license does this repo use?",
+      "expect": [["licenses_get_for_repo"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g41",
+      "q": "are any of my dependencies known to be vulnerable?",
+      "expect": [["dependabot_list_alerts_for_repo"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g42",
+      "q": "did anyone accidentally commit a password or token?",
+      "expect": [["secret_scanning_list_alerts_for_repo"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g43",
+      "q": "invite alex@company.com to our organization",
+      "expect": [["orgs_create_invitation"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g44",
+      "q": "remove bob from the org, he left the company",
+      "expect": [["orgs_remove_member"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g45",
+      "q": "create a branch called hotfix from main",
+      "expect": [["git_create_ref"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g46",
+      "q": "share this snippet publicly as a gist",
+      "expect": [["gists_create"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g47",
+      "q": "put a thumbs up on issue 3",
+      "expect": [["reactions_create_for_issue"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "g48",
+      "q": "spin up a cloud dev environment for this repo",
+      "expect": [
+        [
+          "codespaces_create_for_authenticated_user",
+          "codespaces_create_with_repo_for_authenticated_user"
+        ]
+      ],
+      "tags": ["single"]
+    }
+  ],
+  "offTopic": [
+    "tell me a joke",
+    "what's the weather in Delhi today?",
+    "who won the last cricket world cup?",
+    "translate 'good morning' into French",
+    "write a short poem about the sea",
+    "hi"
+  ]
+}

@@ -300,6 +300,9 @@ importers:
 
   packages/agent-core:
     dependencies:
+      '@toolbridge/retrieval':
+        specifier: workspace:*
+        version: link:../retrieval
       '@toolbridge/shared':
         specifier: workspace:*
         version: link:../shared

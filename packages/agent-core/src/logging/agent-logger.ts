@@ -30,6 +30,16 @@ export function logAgentEvent(logger: Logger, event: AgentEvent): void {
     case 'reasoning-delta':
     case 'text-delta':
       return;
+    case 'tools-selected':
+      logger.info(
+        {
+          mode: event.selection.mode,
+          topScore: event.selection.topScore,
+          offered: event.offered,
+        },
+        'tools-selected',
+      );
+      return;
     case 'llm-response': {
       const { result } = event;
       logger.info(

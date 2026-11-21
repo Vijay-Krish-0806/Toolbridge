@@ -5,6 +5,8 @@
  *   pnpm --filter @toolbridge/agent-core chat --max-iterations 1 "question"
  *   pnpm --filter @toolbridge/agent-core chat --openapi "question"  use the tools generated from
  *     specs/host-store.json (+ overrides) instead of the five hand-written ones
+ *   pnpm --filter @toolbridge/agent-core chat --openapi --retrieve 5 "question"  offer only the
+ *     tools picked by vector search (Step 3.2; needs MongoDB and the embedding model)
  * Each run is logged as JSON lines to logs/agent.ndjson, tagged with its runId.
  */
 import { randomUUID } from 'node:crypto';
@@ -12,9 +14,23 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
-import { compileTools, loadSpec, normalize, parseOverrides } from '@toolbridge/spec-compiler';
+import {
+  connectToolIndex,
+  DEFAULT_SELECTOR,
+  loadEmbeddingConfig,
+  VectorToolSelector,
+} from '@toolbridge/retrieval';
+import {
+  compileTools,
+  loadSpec,
+  normalize,
+  parseOverrides,
+  type ToolDefinition as CompiledTool,
+} from '@toolbridge/spec-compiler';
+import { z } from 'zod';
 import { type AgentEvent, type AgentLimits, type AgentRunResult, runAgent } from '../agent/loop.js';
 import { STORE_AGENT_SYSTEM_PROMPT } from '../agent/system-prompt.js';
+import type { ToolSelector } from '../agent/tool-selector.js';
 import { loadHostApiConfig, loadLLMConfig } from '../config.js';
 import { HostApiClient } from '../host-api/client.js';
 import { createHostStoreTools } from '../host-api/tools.js';
@@ -30,6 +46,11 @@ import type { Tool } from '../tools/tool.js';
 
 /** Where run logs go, relative to the folder the CLI runs in (packages/agent-core). */
 const LOG_FILE = 'logs/agent.ndjson';
+/** The chat CLI's own tool index: one local "tenant" and the host spec. */
+const AGENT_DB = 'toolbridge_agent';
+const HOST_SCOPE = { tenantId: 'local', specId: 'host-store' };
+/** Always offered: most store conversations start by looking up an order (Step 3.2 baseline). */
+const HOST_CORE_TOOLS = ['orders_get'];
 const GREY = '\x1b[90m';
 const RESET = '\x1b[0m';
 
@@ -82,6 +103,14 @@ function printStep(event: AgentEvent): void {
     case 'reasoning-delta':
     case 'text-delta':
       return;
+    case 'tools-selected': {
+      const { mode, topScore } = event.selection;
+      const score = topScore === undefined ? '' : `, top score ${topScore.toFixed(3)}`;
+      console.log(
+        `  [retrieval] ${String(event.offered.length)} tools (${mode}${score}): ${event.offered.join(', ')}`,
+      );
+      return;
+    }
     case 'llm-response': {
       const { usage, message } = event.result;
       const tokens = usage
@@ -112,9 +141,10 @@ function printStep(event: AgentEvent): void {
 
 /**
  * Compiles the host spec and its overrides into tools (Steps 2.1 to 2.3) that call the host API
- * through the SSRF-safe client, logged in as the configured staff account.
+ * through the SSRF-safe client, logged in as the configured staff account. Also returns the
+ * compiled definitions, which the tool index embeds.
  */
-async function createGeneratedTools(): Promise<Tool[]> {
+async function createGeneratedTools(): Promise<{ tools: Tool[]; compiled: CompiledTool[] }> {
   const config = loadHostApiConfig();
   const specs = resolve(import.meta.dirname, '../../../../specs');
   const { model } = normalize(await loadSpec(resolve(specs, 'host-store.json')));
@@ -129,26 +159,65 @@ async function createGeneratedTools(): Promise<Tool[]> {
     tokenField: 'accessToken',
   });
   const { tools } = compileTools(model, overrides);
-  return createOpenApiTools(tools, {
-    baseUrl: config.baseUrl,
-    securitySchemes: model.securitySchemes,
-    auth,
-    client,
+  return {
+    tools: createOpenApiTools(tools, {
+      baseUrl: config.baseUrl,
+      securitySchemes: model.securitySchemes,
+      auth,
+      client,
+    }),
+    compiled: tools,
+  };
+}
+
+/**
+ * Step 3.2: indexes the host tools (only changed ones are embedded) and returns a selector that
+ * picks `k` of them per question. The index lives in its own database, apart from the platform's.
+ * `close` ends the MongoDB connection, so the process can exit.
+ */
+async function createSelector(
+  compiled: CompiledTool[],
+  k: number,
+): Promise<{ selector: ToolSelector; close: () => Promise<void> }> {
+  const { MONGO_URI } = z.object({ MONGO_URI: z.string().min(1) }).parse(process.env);
+  const { index, close } = await connectToolIndex({
+    mongoUri: MONGO_URI,
+    dbName: AGENT_DB,
+    embedding: loadEmbeddingConfig(),
   });
+  const summary = await index.reindex(HOST_SCOPE, compiled);
+  const last = compiled.at(-1);
+  if (last && summary.unchanged < summary.total) await index.waitUntilSearchable(HOST_SCOPE, last);
+  console.log(`tool index: ${JSON.stringify(summary)}`);
+  const selector = new VectorToolSelector(index, HOST_SCOPE, {
+    ...DEFAULT_SELECTOR,
+    k,
+    kFallback: Math.max(k, DEFAULT_SELECTOR.kFallback),
+    core: HOST_CORE_TOOLS,
+  });
+  return { selector, close };
 }
 
 /**
  * Wires the real pieces together (model, host API client, tools, executor, logger) and returns a
  * function that answers one question, keeping the conversation between questions.
  */
-async function createSession(limits: Partial<AgentLimits>, openapi: boolean) {
+async function createSession(
+  limits: Partial<AgentLimits>,
+  openapi: boolean,
+  retrieveK: number | undefined,
+) {
   const llmConfig = loadLLMConfig();
   const llm = new OpenAICompatibleProvider(llmConfig);
+  const generated = openapi ? await createGeneratedTools() : undefined;
   const registry = new ToolRegistry(
-    openapi
-      ? await createGeneratedTools()
-      : createHostStoreTools(new HostApiClient(loadHostApiConfig())),
+    generated?.tools ?? createHostStoreTools(new HostApiClient(loadHostApiConfig())),
   );
+  const retrieval =
+    generated && retrieveK !== undefined
+      ? await createSelector(generated.compiled, retrieveK)
+      : undefined;
+  const selector = retrieval?.selector;
   const logger = createFileLogger(LOG_FILE);
   // The executor lives for the whole session, so retries log through whichever run is current.
   let runLogger = logger;
@@ -163,6 +232,10 @@ async function createSession(limits: Partial<AgentLimits>, openapi: boolean) {
   return {
     model: llmConfig.model,
     toolCount: registry.names().length,
+    /** Closes the tool index connection, if retrieval is on. */
+    close: async () => {
+      await retrieval?.close();
+    },
     /** Forgets the conversation, keeping only the system prompt. */
     reset: () => {
       history = [systemMessage];
@@ -185,6 +258,7 @@ async function createSession(limits: Partial<AgentLimits>, openapi: boolean) {
           executor,
           messages: [...history, { role: 'user', content: question }],
           limits,
+          ...(selector && { selector }),
           onEvent: (event) => {
             print(event);
             logAgentEvent(runLogger, event);
@@ -217,20 +291,43 @@ async function createSession(limits: Partial<AgentLimits>, openapi: boolean) {
 /** Reads flags, then runs either one question or an interactive prompt loop. */
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
-    options: { 'max-iterations': { type: 'string' }, openapi: { type: 'boolean' } },
+    options: {
+      'max-iterations': { type: 'string' },
+      openapi: { type: 'boolean' },
+      retrieve: { type: 'string' },
+    },
     allowPositionals: true,
   });
   const maxIterations =
     values['max-iterations'] === undefined ? undefined : Number(values['max-iterations']);
+  const retrieveK = values.retrieve === undefined ? undefined : Number(values.retrieve);
+  if (retrieveK !== undefined && (!Number.isInteger(retrieveK) || retrieveK < 1)) {
+    throw new Error('--retrieve needs a whole number of tools, for example --retrieve 5.');
+  }
+  if (retrieveK !== undefined && values.openapi !== true) {
+    throw new Error('--retrieve works with the generated tools: add --openapi.');
+  }
   const session = await createSession(
     maxIterations === undefined ? {} : { maxIterations },
     values.openapi === true,
+    retrieveK,
   );
   console.log(
     `${String(session.toolCount)} tools (${values.openapi === true ? 'generated from the spec' : 'hand-written'})`,
   );
 
-  const question = positionals.join(' ').trim();
+  try {
+    await converse(session, positionals.join(' ').trim());
+  } finally {
+    await session.close();
+  }
+}
+
+/** Answers one question, or runs the interactive prompt loop when there is none. */
+async function converse(
+  session: Awaited<ReturnType<typeof createSession>>,
+  question: string,
+): Promise<void> {
   if (question) {
     console.log(`you> ${question}`);
     await session.ask(question);

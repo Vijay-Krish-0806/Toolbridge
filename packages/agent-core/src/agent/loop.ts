@@ -3,9 +3,16 @@
  * append the results, and repeat until it answers in plain text or a limit stops it.
  */
 import type { LLMProvider } from '../llm/provider.js';
-import type { ChatMessage, GenerateRequest, GenerateResult, ToolCall } from '../llm/types.js';
+import type {
+  ChatMessage,
+  GenerateRequest,
+  GenerateResult,
+  ToolCall,
+  ToolDefinition,
+} from '../llm/types.js';
 import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
+import type { ToolSelection, ToolSelector } from './tool-selector.js';
 
 export interface AgentLimits {
   /** Model calls allowed in one run. The guard against a model that never stops calling tools. */
@@ -37,6 +44,7 @@ export interface AgentUsage {
  * that model call is complete.
  */
 export type AgentEvent =
+  | { type: 'tools-selected'; selection: ToolSelection; offered: string[] }
   | { type: 'reasoning-delta'; text: string }
   | { type: 'text-delta'; text: string }
   | { type: 'llm-response'; iteration: number; result: GenerateResult; durationMs: number }
@@ -51,6 +59,11 @@ export interface AgentRunInput {
   messages: ChatMessage[];
   limits?: Partial<AgentLimits>;
   onEvent?: (event: AgentEvent) => void;
+  /**
+   * Step 3.2: offer only the tools this selector picks for the latest user message, instead of
+   * every registered tool. Without it, the whole registry is offered (the earlier behavior).
+   */
+  selector?: ToolSelector;
 }
 
 export interface AgentRunResult {
@@ -73,7 +86,8 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const emit = input.onEvent ?? (() => undefined);
   const messages = [...input.messages];
-  const tools = input.registry.definitions();
+  const tools = await offeredTools(input, emit);
+  const offered = new Set(tools.map((tool) => tool.name));
   const usage: AgentUsage = {
     inputTokens: 0,
     outputTokens: 0,
@@ -110,7 +124,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
       return finish(result.finishReason === 'length' ? 'length' : 'answer', result.message.content);
     }
 
-    const results = await runToolCalls(calls, input.registry, input.executor, emit);
+    const results = await runToolCalls(calls, offered, input.registry, input.executor, emit);
     usage.toolCalls += calls.length;
     calls.forEach((call, i) => {
       const toolResult = results[i];
@@ -123,6 +137,26 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
     }
   }
   return finish('max_iterations');
+}
+
+/**
+ * The tool menu for this run. With a selector, it selects once, from the latest user message,
+ * and keeps that menu for the whole run: changing the menu between steps would hide a tool the
+ * model planned to call next. Names the registry does not know are dropped.
+ * Before -> after: 35 registered tools, selector picks 6 -> those 6 definitions, in registry order.
+ */
+async function offeredTools(
+  input: AgentRunInput,
+  emit: (event: AgentEvent) => void,
+): Promise<ToolDefinition[]> {
+  const all = input.registry.definitions();
+  if (!input.selector) return all;
+  const query = input.messages.findLast((m) => m.role === 'user')?.content ?? '';
+  const selection = await input.selector.select(query);
+  const picked = new Set(selection.names);
+  const tools = all.filter((tool) => picked.has(tool.name));
+  emit({ type: 'tools-selected', selection, offered: tools.map((tool) => tool.name) });
+  return tools;
 }
 
 /**
@@ -150,6 +184,7 @@ async function streamModelTurn(
  */
 async function runToolCalls(
   calls: ToolCall[],
+  offered: Set<string>,
   registry: ToolRegistry,
   executor: ToolExecutor,
   emit: (event: AgentEvent) => void,
@@ -158,7 +193,7 @@ async function runToolCalls(
   const runOne = async (call: ToolCall): Promise<ToolResult> => {
     emit({ type: 'tool-start', call });
     const started = performance.now();
-    const result = await executor.run(call);
+    const result = offered.has(call.name) ? await executor.run(call) : notOffered(call, offered);
     emit({ type: 'tool-end', call, result, durationMs: performance.now() - started });
     return result;
   };
@@ -169,6 +204,22 @@ async function runToolCalls(
   const results: ToolResult[] = [];
   for (const call of calls) results.push(await runOne(call));
   return results;
+}
+
+/**
+ * The result for a call to a tool that is registered but was not offered in this run (the model
+ * remembered it from earlier in the conversation, or guessed its name). It is refused, never run:
+ * the menu is the permission boundary for the run, and the model can recover from the error.
+ */
+function notOffered(call: ToolCall, offered: Set<string>): ToolResult {
+  return {
+    ok: false,
+    error: {
+      code: 'unknown_tool',
+      message: `Tool "${call.name}" is not available for this request. Available tools: ${[...offered].join(', ')}.`,
+      retryable: false,
+    },
+  };
 }
 
 /**

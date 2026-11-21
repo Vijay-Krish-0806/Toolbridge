@@ -13,4 +13,11 @@ export interface EmbeddingProvider {
    * (two arrays of `dimensions` numbers).
    */
   embed(texts: string[]): Promise<number[][]>;
+  /**
+   * Embeds a search query. Instruction-aware models (Qwen3-Embedding) want a task instruction on
+   * the query side only; documents go through `embed` unchanged, so changing the instruction
+   * never re-embeds the index.
+   * Before -> after: `'refund a damaged order'` -> one vector of `dimensions` numbers.
+   */
+  embedQuery(query: string): Promise<number[]>;
 }

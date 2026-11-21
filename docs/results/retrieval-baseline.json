@@ -1,0 +1,743 @@
+{
+  "meta": {
+    "date": "2026-11-21",
+    "embedding model": "qwen3-embedding:0.6b, 1024 dimensions",
+    "query instruction": "\"Given a user request, retrieve the API tools that can fulfil it\"",
+    "tool text": "name + description + arguments (Step 3.1 buildToolText)",
+    "datasets": "hand-written by Claude Code, see the \"about\" field of each file (possible optimistic bias)"
+  },
+  "reports": [
+    {
+      "spec": "host-store",
+      "dataset": {
+        "file": "evals/retrieval/host-store.json",
+        "sha256": "6a21d3a786b34e137ab870eb2ee8a4a5f838fd11ac7b40f693fce5fa23287a47"
+      },
+      "specHash": "345437afacacfd6dbb9613ba6a3eb81183a51d8df2495adaea8a6be862d50061",
+      "tools": 35,
+      "fullMenuTokens": 5376,
+      "queries": 43,
+      "reindex": {
+        "total": 35,
+        "unchanged": 35,
+        "fromCache": 0,
+        "embedded": 0,
+        "removed": 0,
+        "ms": 7
+      },
+      "medianSearchMs": 66,
+      "overall": [
+        {
+          "k": 1,
+          "recall": 0.7209302325581395,
+          "hit": 0.627906976744186
+        },
+        {
+          "k": 3,
+          "recall": 0.872093023255814,
+          "hit": 0.7674418604651163
+        },
+        {
+          "k": 5,
+          "recall": 0.9069767441860465,
+          "hit": 0.8372093023255814
+        },
+        {
+          "k": 10,
+          "recall": 0.9534883720930233,
+          "hit": 0.9302325581395349
+        },
+        {
+          "k": 20,
+          "recall": 1,
+          "hit": 1
+        }
+      ],
+      "byTag": {
+        "single": {
+          "n": 27,
+          "table": [
+            {
+              "k": 1,
+              "recall": 0.8888888888888888,
+              "hit": 0.8888888888888888
+            },
+            {
+              "k": 3,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 5,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 10,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 20,
+              "recall": 1,
+              "hit": 1
+            }
+          ]
+        },
+        "multi": {
+          "n": 13,
+          "table": [
+            {
+              "k": 1,
+              "recall": 0.3076923076923077,
+              "hit": 0
+            },
+            {
+              "k": 3,
+              "recall": 0.5769230769230769,
+              "hit": 0.23076923076923078
+            },
+            {
+              "k": 5,
+              "recall": 0.6923076923076923,
+              "hit": 0.46153846153846156
+            },
+            {
+              "k": 10,
+              "recall": 0.8461538461538461,
+              "hit": 0.7692307692307693
+            },
+            {
+              "k": 20,
+              "recall": 1,
+              "hit": 1
+            }
+          ]
+        },
+        "followup": {
+          "n": 3,
+          "table": [
+            {
+              "k": 1,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 3,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 5,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 10,
+              "recall": 1,
+              "hit": 1
+            },
+            {
+              "k": 20,
+              "recall": 1,
+              "hit": 1
+            }
+          ]
+        }
+      },
+      "top1Scores": {
+        "inDomain": {
+          "min": 0.7983136773109436,
+          "p10": 0.8742699027061462,
+          "median": 0.9007067680358887
+        },
+        "offTopic": {
+          "max": 0.8226785659790039,
+          "median": 0.7514082193374634
+        }
+      },
+      "policy": {
+        "k": 5,
+        "kFallback": 15,
+        "minTopScore": 0.85,
+        "core": [
+          "orders_get"
+        ],
+        "hit": 0.9302325581395349,
+        "fallbackRate": 0.09302325581395349,
+        "meanTools": 6.72093023255814,
+        "meanTokens": 979,
+        "misses": [
+          "h20",
+          "h31",
+          "h34"
+        ]
+      },
+      "missesAt5": [
+        {
+          "id": "h12",
+          "q": "The mug in ORD-10031 arrived cracked, give the customer their money back",
+          "expect": [
+            "orders_get",
+            "refunds_request"
+          ],
+          "groupRanks": [
+            7,
+            1
+          ],
+          "top5": [
+            "refunds_request 0.882",
+            "inventory_for_product 0.852",
+            "products_get 0.852",
+            "refunds_reject 0.851",
+            "refunds_list 0.850"
+          ]
+        },
+        {
+          "id": "h20",
+          "q": "We're not selling the blue desk lamp any more, take it off the store",
+          "expect": [
+            "products_list",
+            "products_update"
+          ],
+          "groupRanks": [
+            6,
+            2
+          ],
+          "top5": [
+            "products_create 0.886",
+            "products_update 0.880",
+            "products_get 0.868",
+            "products_bulk_price_update 0.860",
+            "orders_cancel 0.858"
+          ]
+        },
+        {
+          "id": "h26",
+          "q": "Cancel ORD-10050, the customer changed their mind",
+          "expect": [
+            "orders_cancel",
+            "orders_get"
+          ],
+          "groupRanks": [
+            1,
+            8
+          ],
+          "top5": [
+            "orders_cancel 0.933",
+            "refunds_request 0.892",
+            "orders_update_notes 0.881",
+            "orders_mark_paid 0.878",
+            "refunds_reject 0.874"
+          ]
+        },
+        {
+          "id": "h27",
+          "q": "The bank transfer for ORD-10060 came through",
+          "expect": [
+            "orders_mark_paid",
+            "orders_get"
+          ],
+          "groupRanks": [
+            9,
+            2
+          ],
+          "top5": [
+            "refunds_get_by_id 0.827",
+            "orders_get 0.825",
+            "reports_refunds 0.824",
+            "refunds_list 0.823",
+            "shipments_get 0.821"
+          ]
+        },
+        {
+          "id": "h29",
+          "q": "Send out ORD-10020 today",
+          "expect": [
+            "shipments_create",
+            "orders_get"
+          ],
+          "groupRanks": [
+            2,
+            11
+          ],
+          "top5": [
+            "orders_delayed 0.894",
+            "shipments_create 0.890",
+            "shipments_deliver 0.884",
+            "orders_update_notes 0.882",
+            "orders_mark_paid 0.881"
+          ]
+        },
+        {
+          "id": "h31",
+          "q": "Place an order for Meera Iyer: 2 of SKU-0003",
+          "expect": [
+            "customers_list",
+            "orders_create"
+          ],
+          "groupRanks": [
+            19,
+            2
+          ],
+          "top5": [
+            "products_create 0.898",
+            "orders_create 0.894",
+            "products_get 0.892",
+            "products_list 0.878",
+            "forms_order_form 0.870"
+          ]
+        },
+        {
+          "id": "h34",
+          "q": "What has Priya Shah bought from us?",
+          "expect": [
+            "customers_list",
+            "customers_list_orders"
+          ],
+          "groupRanks": [
+            13,
+            11
+          ],
+          "top5": [
+            "products_get 0.889",
+            "products_list 0.886",
+            "products_create 0.882",
+            "inventory_for_product 0.879",
+            "forms_order_form 0.873"
+          ]
+        }
+      ],
+      "labelNotes": []
+    },
+    {
+      "spec": "github",
+      "dataset": {
+        "file": "evals/retrieval/github.json",
+        "sha256": "2e544d226f2dad032939e7face1acb57d681dbf513f1443d14fffd504bf3845b"
+      },
+      "specHash": "5cb55a93fede2c805cf17af7fcfa600a6643966a16309e8edbf4af349f559b4b",
+      "tools": 1281,
+      "fullMenuTokens": 447603,
+      "queries": 48,
+      "reindex": {
+        "total": 1281,
+        "unchanged": 1281,
+        "fromCache": 0,
+        "embedded": 0,
+        "removed": 0,
+        "ms": 27
+      },
+      "medianSearchMs": 83,
+      "overall": [
+        {
+          "k": 1,
+          "recall": 0.3333333333333333,
+          "hit": 0.3333333333333333
+        },
+        {
+          "k": 3,
+          "recall": 0.4791666666666667,
+          "hit": 0.4791666666666667
+        },
+        {
+          "k": 5,
+          "recall": 0.625,
+          "hit": 0.625
+        },
+        {
+          "k": 10,
+          "recall": 0.75,
+          "hit": 0.75
+        },
+        {
+          "k": 20,
+          "recall": 0.8125,
+          "hit": 0.8125
+        }
+      ],
+      "byTag": {
+        "single": {
+          "n": 48,
+          "table": [
+            {
+              "k": 1,
+              "recall": 0.3333333333333333,
+              "hit": 0.3333333333333333
+            },
+            {
+              "k": 3,
+              "recall": 0.4791666666666667,
+              "hit": 0.4791666666666667
+            },
+            {
+              "k": 5,
+              "recall": 0.625,
+              "hit": 0.625
+            },
+            {
+              "k": 10,
+              "recall": 0.75,
+              "hit": 0.75
+            },
+            {
+              "k": 20,
+              "recall": 0.8125,
+              "hit": 0.8125
+            }
+          ]
+        }
+      },
+      "top1Scores": {
+        "inDomain": {
+          "min": 0.8222743272781372,
+          "p10": 0.8557616472244263,
+          "median": 0.9064414501190186
+        },
+        "offTopic": {
+          "max": 0.8582054376602173,
+          "median": 0.797222912311554
+        }
+      },
+      "policy": {
+        "k": 5,
+        "kFallback": 15,
+        "minTopScore": 0.85,
+        "core": [],
+        "hit": 0.625,
+        "fallbackRate": 0.08333333333333333,
+        "meanTools": 5.833333333333333,
+        "meanTokens": 1916,
+        "misses": [
+          "g02",
+          "g03",
+          "g04",
+          "g06",
+          "g07",
+          "g09",
+          "g11",
+          "g15",
+          "g16",
+          "g20",
+          "g21",
+          "g22",
+          "g24",
+          "g29",
+          "g37",
+          "g41",
+          "g42",
+          "g45"
+        ]
+      },
+      "missesAt5": [
+        {
+          "id": "g02",
+          "q": "close issue #42 in my repo",
+          "expect": [
+            "issues_update"
+          ],
+          "groupRanks": [
+            10
+          ],
+          "top5": [
+            "issues_unlock 0.923",
+            "issues_dismiss_suggestion 0.918",
+            "issues_add_blocked_by_dependency 0.910",
+            "issues_remove_sub_issue 0.909",
+            "issues_remove_relates_to 0.908"
+          ]
+        },
+        {
+          "id": "g03",
+          "q": "show the open issues in facebook/react",
+          "expect": [
+            "issues_list_for_repo | search_issues_and_pull_requests"
+          ],
+          "groupRanks": [
+            6
+          ],
+          "top5": [
+            "reactions_list_for_issue 0.901",
+            "users_list_issue_fields_for_authenticated_user 0.899",
+            "repos_list_issue_types 0.899",
+            "users_list_issue_types_for_authenticated_user 0.894",
+            "issues_list_events_for_repo 0.893"
+          ]
+        },
+        {
+          "id": "g04",
+          "q": "reply on issue 17 that it's fixed in v2",
+          "expect": [
+            "issues_create_comment"
+          ],
+          "groupRanks": [
+            16
+          ],
+          "top5": [
+            "issues_add_blocked_by_dependency 0.882",
+            "reactions_create_for_issue 0.881",
+            "issues_create_issue_artifact 0.878",
+            "issues_dismiss_suggestion 0.878",
+            "issues_unlock 0.877"
+          ]
+        },
+        {
+          "id": "g06",
+          "q": "hand issue 12 over to @maria",
+          "expect": [
+            "issues_add_assignees"
+          ],
+          "groupRanks": [
+            18
+          ],
+          "top5": [
+            "issues_unlock 0.849",
+            "interactions_remove_restrictions_for_authenticated_user 0.841",
+            "reactions_create_for_issue 0.839",
+            "issues_dismiss_suggestion 0.838",
+            "issues_create_issue_artifact 0.837"
+          ]
+        },
+        {
+          "id": "g07",
+          "q": "stop people commenting on issue 5, it's getting heated",
+          "expect": [
+            "issues_lock"
+          ],
+          "groupRanks": [
+            7
+          ],
+          "top5": [
+            "issues_unpin_comment 0.915",
+            "reactions_delete_for_issue 0.912",
+            "reactions_delete_for_issue_comment 0.912",
+            "issues_delete_comment 0.908",
+            "issues_dismiss_suggestion 0.907"
+          ]
+        },
+        {
+          "id": "g09",
+          "q": "merge pull request 230",
+          "expect": [
+            "pulls_merge"
+          ],
+          "groupRanks": [
+            7
+          ],
+          "top5": [
+            "agent_merge_get_agent_merge_enrollment 0.937",
+            "repos_list_pull_requests_associated_with_commit 0.935",
+            "pulls_check_if_merged 0.935",
+            "pulls_get 0.932",
+            "pulls_merge_async 0.930"
+          ]
+        },
+        {
+          "id": "g11",
+          "q": "ask @sam and @lee to look at PR 14",
+          "expect": [
+            "pulls_request_reviewers"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "meta_get_zen 0.900",
+            "agent_tasks_create_task_in_repo 0.892",
+            "actions_get_private_repo_fork_pr_workflows_settings_organization 0.890",
+            "agent_automations_list_available_repo_automation_tools 0.889",
+            "interactions_get_pull_request_creation_cap_for_repo 0.884"
+          ]
+        },
+        {
+          "id": "g15",
+          "q": "copy torvalds/linux into my account",
+          "expect": [
+            "repos_create_fork"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "users_create_public_ssh_key_for_authenticated_user 0.885",
+            "users_create_ssh_signing_key_for_authenticated_user 0.873",
+            "repos_create_deploy_key 0.873",
+            "agents_get_repo_public_key 0.871",
+            "codespaces_get_repo_public_key 0.871"
+          ]
+        },
+        {
+          "id": "g16",
+          "q": "publish v1.4.0 of my project",
+          "expect": [
+            "repos_create_release"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "repos_create_pages_deployment 0.871",
+            "repos_create_pages_site 0.870",
+            "repos_get_latest_release 0.870",
+            "apps_create_from_manifest 0.868",
+            "repos_generate_release_notes 0.866"
+          ]
+        },
+        {
+          "id": "g20",
+          "q": "update docs/setup.md in my repo with the new install steps",
+          "expect": [
+            "repos_create_or_update_file_contents"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "repos_create_for_authenticated_user 0.870",
+            "codespaces_publish_for_authenticated_user 0.869",
+            "apps_add_repo_to_installation_for_authenticated_user 0.867",
+            "apps_create_from_manifest 0.865",
+            "codespaces_create_for_authenticated_user 0.865"
+          ]
+        },
+        {
+          "id": "g21",
+          "q": "give @kim write access to our repo",
+          "expect": [
+            "repos_add_collaborator"
+          ],
+          "groupRanks": [
+            6
+          ],
+          "top5": [
+            "repos_add_user_access_restrictions 0.933",
+            "repos_get_collaborator_permission_level 0.932",
+            "repos_set_user_access_restrictions 0.931",
+            "actions_set_workflow_access_to_repository 0.930",
+            "actions_get_workflow_access_to_repository 0.928"
+          ]
+        },
+        {
+          "id": "g22",
+          "q": "require 2 approvals before anything lands on main",
+          "expect": [
+            "repos_update_branch_protection"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "actions_set_fork_pr_contributor_approval_permissions_or_1a8b5dfb 0.894",
+            "actions_set_fork_pr_contributor_approval_permissions_repository 0.888",
+            "actions_approve_workflow_run 0.886",
+            "orgs_review_pat_grant_requests_in_bulk 0.883",
+            "orgs_review_pat_grant_request 0.881"
+          ]
+        },
+        {
+          "id": "g24",
+          "q": "what changed between v1.0 and v2.0?",
+          "expect": [
+            "repos_compare_commits"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "meta_get_all_versions 0.866",
+            "actions_get_runner_version_deprecation_for_org 0.861",
+            "meta_get_zen 0.856",
+            "copilot_copilot_users_usage_metrics 0.850",
+            "repos_generate_release_notes 0.850"
+          ]
+        },
+        {
+          "id": "g29",
+          "q": "store our NPM token so the pipelines can use it",
+          "expect": [
+            "actions_create_or_update_repo_secret"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "actions_create_registration_token_for_repo 0.870",
+            "actions_create_registration_token_for_org 0.858",
+            "actions_create_remove_token_for_repo 0.854",
+            "apps_create_installation_access_token 0.854",
+            "dependabot_get_repo_public_key 0.852"
+          ]
+        },
+        {
+          "id": "g37",
+          "q": "star vitejs/vite",
+          "expect": [
+            "activity_star_repo_for_authenticated_user"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "meta_get_all_versions 0.837",
+            "gitignore_get_template 0.823",
+            "apps_create_from_manifest 0.822",
+            "licenses_get 0.821",
+            "gitignore_get_all_templates 0.820"
+          ]
+        },
+        {
+          "id": "g41",
+          "q": "are any of my dependencies known to be vulnerable?",
+          "expect": [
+            "dependabot_list_alerts_for_repo"
+          ],
+          "groupRanks": [
+            7
+          ],
+          "top5": [
+            "repos_enable_vulnerability_alerts 0.943",
+            "repos_check_vulnerability_alerts 0.935",
+            "repos_check_automated_security_fixes 0.927",
+            "dependabot_list_alerts_for_org 0.920",
+            "dependabot_repository_access_for_enterprise 0.916"
+          ]
+        },
+        {
+          "id": "g42",
+          "q": "did anyone accidentally commit a password or token?",
+          "expect": [
+            "secret_scanning_list_alerts_for_repo"
+          ],
+          "groupRanks": [
+            null
+          ],
+          "top5": [
+            "dependabot_get_org_secret 0.906",
+            "dependabot_get_repo_secret 0.898",
+            "credentials_revoke 0.895",
+            "dependabot_get_org_public_key 0.895",
+            "dependabot_get_repo_public_key 0.894"
+          ]
+        },
+        {
+          "id": "g45",
+          "q": "create a branch called hotfix from main",
+          "expect": [
+            "git_create_ref"
+          ],
+          "groupRanks": [
+            12
+          ],
+          "top5": [
+            "repos_get_branch 0.934",
+            "repos_rename_branch 0.906",
+            "repos_list_branches_for_head_commit 0.900",
+            "repos_create_fork 0.899",
+            "repos_update_branch_protection 0.896"
+          ]
+        }
+      ],
+      "labelNotes": []
+    }
+  ]
+}

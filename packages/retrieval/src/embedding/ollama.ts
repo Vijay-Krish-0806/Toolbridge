@@ -16,6 +16,13 @@ export interface OllamaEmbeddingOptions {
   batchSize?: number;
   /** Per request. The first call also loads the model, which took about 20 s on this laptop. */
   timeoutMs?: number;
+  /**
+   * Task instruction put in front of queries, in Qwen3-Embedding's format
+   * `Instruct: {task}
+Query:{query}` (model card, huggingface.co/Qwen/Qwen3-Embedding-0.6B).
+   * Empty string: send queries as they are.
+   */
+  queryInstruction?: string;
 }
 
 const embedResponse = z.object({ embeddings: z.array(z.array(z.number())) });
@@ -26,6 +33,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
   private readonly url: string;
   private readonly batchSize: number;
   private readonly timeoutMs: number;
+  private readonly queryInstruction: string;
 
   /** Stores the settings; no request is made until the first embed call. */
   constructor(options: OllamaEmbeddingOptions) {
@@ -34,6 +42,7 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
     this.url = `${options.baseUrl.replace(/\/+$/, '')}/api/embed`;
     this.batchSize = options.batchSize ?? 32;
     this.timeoutMs = options.timeoutMs ?? 120_000;
+    this.queryInstruction = options.queryInstruction ?? '';
   }
 
   /** Embeds texts in batches of `batchSize`, keeping the input order. */
@@ -43,6 +52,23 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
       vectors.push(...(await this.embedBatch(texts.slice(start, start + this.batchSize))));
     }
     return vectors;
+  }
+
+  /**
+   * Embeds one query with the instruction in front (no space after "Query:", as in the model
+   * card's get_detailed_instruct function).
+   * Before -> after: `'is ORD-1 shipped?'` ->
+   * embeds "Instruct: Given a user request, retrieve the API tools that can fulfil it
+Query:is ORD-1 shipped?".
+   */
+  async embedQuery(query: string): Promise<number[]> {
+    const text = this.queryInstruction
+      ? `Instruct: ${this.queryInstruction}
+Query:${query}`
+      : query;
+    const [vector] = await this.embedBatch([text]);
+    if (!vector) throw new Error('Ollama returned no vector for the query.');
+    return vector;
   }
 
   /**

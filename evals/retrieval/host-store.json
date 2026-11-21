@@ -1,0 +1,257 @@
+{
+  "spec": "host-store",
+  "about": "Step 3.2 recall set for the host store (35 tools). Written by Claude Code from the tool list, phrased the way store staff talk, avoiding the descriptions' wording where possible. Each expect entry is a group: the question needs one tool from every group. Tags: single, multi (needs several tools), followup (a short reply that depends on the conversation).",
+  "queries": [
+    { "id": "h01", "q": "Is ORD-10042 paid yet?", "expect": [["orders_get"]], "tags": ["single"] },
+    {
+      "id": "h02",
+      "q": "Where's the package for order ORD-10007, has it arrived?",
+      "expect": [["orders_get", "shipments_list", "shipments_get"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h03",
+      "q": "Which deliveries are running late?",
+      "expect": [["orders_delayed", "shipments_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h04",
+      "q": "Find the customer whose email is anna@example.com",
+      "expect": [["customers_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h05",
+      "q": "Show me the phone number and address for customer 665f1c2e9b1d4a0012345678",
+      "expect": [["customers_get_by_id"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h06",
+      "q": "Rahul Verma moved, his new address is 12 MG Road, Bengaluru",
+      "expect": [["customers_list"], ["customers_update"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h07",
+      "q": "How much money did we make in October?",
+      "expect": [["reports_sales"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h08",
+      "q": "How many refunds came in last week, and why were they asked for?",
+      "expect": [["reports_refunds"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h09",
+      "q": "Show the refunds that are still waiting for a decision",
+      "expect": [["refunds_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h10",
+      "q": "Approve refund 6650a1b2c3d4e5f601234567",
+      "expect": [["refunds_approve"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h11",
+      "q": "Decline refund 6650a1b2c3d4e5f601234568, the item was clearly used",
+      "expect": [["refunds_reject"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h12",
+      "q": "The mug in ORD-10031 arrived cracked, give the customer their money back",
+      "expect": [["orders_get"], ["refunds_request"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h13",
+      "q": "Do we have any SKU-0042 left in the west warehouse?",
+      "expect": [["inventory_for_product", "inventory_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h14",
+      "q": "What's running low and needs reordering?",
+      "expect": [["inventory_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h15",
+      "q": "We found 3 broken units of SKU-0019 in the east warehouse, fix the count",
+      "expect": [["inventory_adjust"], ["products_get", "products_list"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h16",
+      "q": "How much does SKU-0007 cost right now?",
+      "expect": [["products_get"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h17",
+      "q": "Show me all the kitchen items under $20",
+      "expect": [["products_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h18",
+      "q": "Raise everything in electronics by 5%",
+      "expect": [["products_bulk_price_update"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h19",
+      "q": "Rename SKU-0012 to 'Travel Mug XL'",
+      "expect": [["products_update"], ["products_get", "products_list"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h20",
+      "q": "We're not selling the blue desk lamp any more, take it off the store",
+      "expect": [["products_list"], ["products_update"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h21",
+      "q": "Add a bamboo cutting board to the catalog at $25",
+      "expect": [["products_create"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h22",
+      "q": "Is the code WINTER10 still valid?",
+      "expect": [["coupons_get_by_code", "coupons_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h23",
+      "q": "Set up a 15% off code called SPRING15",
+      "expect": [["coupons_create"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h24",
+      "q": "Turn off the SAVE20 discount",
+      "expect": [["coupons_deactivate"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h25",
+      "q": "Which discount codes can people use right now?",
+      "expect": [["coupons_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h26",
+      "q": "Cancel ORD-10050, the customer changed their mind",
+      "expect": [["orders_cancel"], ["orders_get"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h27",
+      "q": "The bank transfer for ORD-10060 came through",
+      "expect": [["orders_mark_paid"], ["orders_get"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h28",
+      "q": "Put a note on ORD-10011 that they want gift wrapping",
+      "expect": [["orders_update_notes"], ["orders_get"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h29",
+      "q": "Send out ORD-10020 today",
+      "expect": [["shipments_create"], ["orders_get"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h30",
+      "q": "Tracking 1Z999AA10123456784 says it was dropped off, update our records",
+      "expect": [["shipments_get"], ["shipments_deliver"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h31",
+      "q": "Place an order for Meera Iyer: 2 of SKU-0003",
+      "expect": [["customers_list"], ["orders_create"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h32",
+      "q": "What do I need to fill in to create an order?",
+      "expect": [["forms_order_form"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h33",
+      "q": "Show orders from the last 3 days over 100 dollars",
+      "expect": [["orders_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h34",
+      "q": "What has Priya Shah bought from us?",
+      "expect": [["customers_list"], ["customers_list_orders"]],
+      "tags": ["multi"]
+    },
+    {
+      "id": "h35",
+      "q": "List our gold tier customers in Germany",
+      "expect": [["customers_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h36",
+      "q": "Which orders used the WELCOME5 coupon?",
+      "expect": [["orders_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h37",
+      "q": "Show refunds over $50 for damaged items",
+      "expect": [["refunds_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h38",
+      "q": "What's happening with refund 6650a1b2c3d4e5f601234569?",
+      "expect": [["refunds_get_by_id"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h39",
+      "q": "Which parcels went out with DHL this week?",
+      "expect": [["shipments_list"]],
+      "tags": ["single"]
+    },
+    {
+      "id": "h40",
+      "q": "How many ceramic mugs do we have in total?",
+      "expect": [["inventory_for_product", "inventory_list"], ["products_list"]],
+      "tags": ["multi"]
+    },
+    { "id": "h41", "q": "ok, cancel it", "expect": [["orders_cancel"]], "tags": ["followup"] },
+    { "id": "h42", "q": "yes, approve it", "expect": [["refunds_approve"]], "tags": ["followup"] },
+    {
+      "id": "h43",
+      "q": "fine, ship it today then",
+      "expect": [["shipments_create"]],
+      "tags": ["followup"]
+    }
+  ],
+  "offTopic": [
+    "tell me a joke",
+    "what's the weather in Delhi today?",
+    "who won the last cricket world cup?",
+    "translate 'good morning' into French",
+    "write a short poem about the sea",
+    "hi"
+  ]
+}

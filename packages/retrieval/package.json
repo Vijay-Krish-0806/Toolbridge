@@ -13,7 +13,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "index:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/index-check.js"
+    "index:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/index-check.js",
+    "recall": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/recall.js"
   },
   "dependencies": {
     "@toolbridge/spec-compiler": "workspace:*",
