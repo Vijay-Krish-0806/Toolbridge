@@ -8,11 +8,11 @@
  * .cache/public-specs/ (the dataset file says where to download it). Indexes into its own
  * database, so the embedding cache makes every run after the first fast.
  */
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { compileSpec, sha256, type ToolDefinition } from '@toolbridge/spec-compiler';
+import { sha256, type ToolDefinition } from '@toolbridge/spec-compiler';
 import { MongoClient } from 'mongodb';
 import { z } from 'zod';
 
@@ -20,36 +20,11 @@ import { loadEmbeddingConfig } from '../config.js';
 import { OllamaEmbeddingProvider } from '../embedding/ollama.js';
 import { ToolIndex, type ToolMatch } from '../tool-index.js';
 import { DEFAULT_SELECTOR, type SelectorOptions, selectFromMatches } from '../tool-selector.js';
+import { loadToolDataset, root, TOOL_DATASETS } from './eval-data.js';
 
 const EVAL_DB = 'toolbridge_retrieval_eval';
 const K_VALUES = [1, 3, 5, 10, 20];
 const K_MAX = 20;
-const root = resolve(import.meta.dirname, '../../../..');
-
-/** Where each dataset's spec comes from, and the core set the policy always adds. */
-const SPECS: Record<string, { spec: string; overrides?: string; core: string[] }> = {
-  'host-store': {
-    spec: 'specs/host-store.json',
-    overrides: 'specs/host-store.overrides.json',
-    core: ['orders_get'],
-  },
-  github: { spec: '.cache/public-specs/api.github.com.2026-03-10.json', core: [] },
-};
-
-const dataset = z.object({
-  spec: z.string(),
-  queries: z.array(
-    z.object({
-      id: z.string(),
-      q: z.string(),
-      expect: z.array(z.array(z.string()).min(1)).min(1),
-      tags: z.array(z.string()),
-    }),
-  ),
-  offTopic: z.array(z.string()),
-});
-type Query = z.infer<typeof dataset>['queries'][number];
-
 interface QueryResult {
   id: string;
   q: string;
@@ -85,36 +60,13 @@ function menuTokens(tools: ToolDefinition[]): number {
   return Math.round(JSON.stringify(menu).length / 4);
 }
 
-/** Drops expected names that are not tools of this spec; a group with none left is an error. */
-function checkLabels(queries: Query[], names: Set<string>): string[] {
-  const notes: string[] = [];
-  for (const query of queries) {
-    query.expect = query.expect.map((group) => {
-      const known = group.filter((name) => names.has(name));
-      const unknown = group.filter((name) => !names.has(name));
-      if (unknown.length) notes.push(`${query.id}: not a tool, ignored: ${unknown.join(', ')}`);
-      if (!known.length) throw new Error(`${query.id}: no expected tool exists in this spec.`);
-      return known;
-    });
-  }
-  return notes;
-}
-
 /** Runs one dataset: compile, index, search every question, and compute the tables. */
 async function runDataset(
   file: string,
   db: ReturnType<MongoClient['db']>,
   policy: Omit<SelectorOptions, 'core'>,
 ) {
-  const raw = await readFile(resolve(root, file), 'utf8');
-  const data = dataset.parse(JSON.parse(raw));
-  const source = SPECS[data.spec];
-  if (!source) throw new Error(`Unknown spec "${data.spec}" in ${file}.`);
-  const overrides: unknown = source.overrides
-    ? JSON.parse(await readFile(resolve(root, source.overrides), 'utf8'))
-    : {};
-  const { tools, specHash } = await compileSpec(resolve(root, source.spec), { overrides });
-  const labelNotes = checkLabels(data.queries, new Set(tools.map((t) => t.name)));
+  const { raw, data, core, tools, specHash, labelNotes } = await loadToolDataset(file);
 
   const config = loadEmbeddingConfig();
   const index = new ToolIndex(db, new OllamaEmbeddingProvider(config));
@@ -159,7 +111,7 @@ async function runDataset(
   const tags = [...new Set(results.flatMap((r) => r.tags))];
 
   const toolByName = new Map(tools.map((t) => [t.name, t]));
-  const options: SelectorOptions = { ...policy, core: source.core };
+  const options: SelectorOptions = { ...policy, core };
   const selections = results.map((r) => {
     const selection = selectFromMatches(r.top, options);
     const offered = new Set(selection.names);
@@ -295,7 +247,7 @@ async function main(): Promise<void> {
   const client = await MongoClient.connect(MONGO_URI);
   const reports: DatasetReport[] = [];
   try {
-    for (const file of ['evals/retrieval/host-store.json', 'evals/retrieval/github.json']) {
+    for (const file of TOOL_DATASETS) {
       reports.push(await runDataset(file, client.db(EVAL_DB), policy));
     }
   } finally {

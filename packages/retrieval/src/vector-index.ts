@@ -1,7 +1,7 @@
 /**
- * Helpers shared by every vector index in this package (tools in Step 3.1, knowledge chunks in
- * Step 3.3): create an Atlas Vector Search index and wait until it can be queried, and size the
- * candidate pool of a search. Extracted so the subtle parts (leftover indexes after a drop,
+ * Helpers shared by every index in this package (tools in Step 3.1, knowledge chunks in Step 3.3):
+ * create an Atlas Vector Search or Atlas Search (keyword) index and wait until it can be queried,
+ * and size the candidate pool of a search. Extracted so the subtle parts (leftover indexes after a drop,
  * dimension checks) live in one place.
  */
 import type { Collection, Document } from 'mongodb';
@@ -45,9 +45,6 @@ export function numCandidates(k: number): number {
  * Creates the vector search index if it is missing, then waits until it can be queried (about a
  * second on Atlas Local). An existing index built for a different vector size is an error: it
  * cannot hold this provider's vectors.
- * Right after its collection is dropped, the old index is still listed for a moment with status
- * DOES_NOT_EXIST (seen on Atlas Local 8.0). That entry counts as missing: wait for it to go away,
- * then create the new index. Treating it as existing would wait forever for an index that is gone.
  * Before -> after: a collection with no search index -> the same collection with a queryable
  * `spec.name` index (vector field `vector`, cosine, `provider.dimensions` long).
  */
@@ -57,24 +54,77 @@ export async function ensureVectorIndex<T extends Document>(
   provider: EmbeddingProvider,
   timeoutMs = 60_000,
 ): Promise<void> {
+  await ensureSearchIndex(
+    collection,
+    spec.name,
+    () => createVectorIndex(collection, spec, provider),
+    (index) => {
+      checkDimensions(index, spec, provider);
+    },
+    timeoutMs,
+  );
+}
+
+/**
+ * Step 3.4: the keyword (BM25) side of hybrid search. Creates an Atlas Search index with the given
+ * string fields (English analyzer, so "chargebacks" matches "chargeback") and the filter fields as
+ * `token`, the type the `equals` operator needs, then waits until it can be queried.
+ * Before -> after: `{ name: 'tool_vectors_text', textPaths: ['text'], filterPaths: ['tenantId'] }`
+ * -> a queryable search index on those fields.
+ */
+export async function ensureTextIndex<T extends Document>(
+  collection: Collection<T>,
+  spec: { name: string; textPaths: string[]; filterPaths: string[] },
+  timeoutMs = 60_000,
+): Promise<void> {
+  const fields: Record<string, { type: string; analyzer?: string }> = {};
+  for (const path of spec.textPaths) fields[path] = { type: 'string', analyzer: 'lucene.english' };
+  for (const path of spec.filterPaths) fields[path] = { type: 'token' };
+  await ensureSearchIndex(
+    collection,
+    spec.name,
+    async () => {
+      await collection.createSearchIndex({
+        name: spec.name,
+        type: 'search',
+        definition: { mappings: { dynamic: false, fields } },
+      });
+    },
+    () => undefined,
+    timeoutMs,
+  );
+}
+
+/**
+ * The polling loop both index kinds share: create the index once if it is missing, fail on FAILED,
+ * and return when it is queryable.
+ * Right after its collection is dropped, the old index is still listed for a moment with status
+ * DOES_NOT_EXIST (seen on Atlas Local 8.0). That entry counts as missing: wait for it to go away,
+ * then create the new index. Treating it as existing would wait forever for an index that is gone.
+ */
+async function ensureSearchIndex<T extends Document>(
+  collection: Collection<T>,
+  name: string,
+  create: () => Promise<void>,
+  check: (index: ListedSearchIndex) => void,
+  timeoutMs: number,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let created = false;
   for (;;) {
-    const [index] = (await collection
-      .listSearchIndexes(spec.name)
-      .toArray()) as ListedSearchIndex[];
+    const [index] = (await collection.listSearchIndexes(name).toArray()) as ListedSearchIndex[];
     if (index === undefined) {
-      if (!created) await createVectorIndex(collection, spec, provider);
+      if (!created) await create();
       created = true;
     } else if (index.status === 'FAILED') {
-      throw new Error(`Vector index ${spec.name} failed to build.`);
+      throw new Error(`Search index ${name} failed to build.`);
     } else if (!LEFTOVER_STATUSES.has(index.status ?? '')) {
-      checkDimensions(index, spec, provider);
+      check(index);
       if (index.queryable === true) return;
     }
     if (Date.now() > deadline) {
       throw new Error(
-        `Vector index ${spec.name} is not queryable after ${String(timeoutMs)} ms (status ${index?.status ?? 'none'}).`,
+        `Search index ${name} is not queryable after ${String(timeoutMs)} ms (status ${index?.status ?? 'none'}).`,
       );
     }
     await sleep(500);

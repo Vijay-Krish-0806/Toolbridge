@@ -9,8 +9,10 @@ import type { Collection, Db } from 'mongodb';
 
 import { EmbeddingCache, embeddingKey, vectorsFor } from '../embedding-cache.js';
 import type { EmbeddingProvider } from '../embedding/provider.js';
-import type { ReindexSummary } from '../tool-index.js';
+import { reciprocalRankFusion } from '../rrf.js';
+import type { ReindexSummary, SearchMode } from '../tool-index.js';
 import {
+  ensureTextIndex,
   ensureVectorIndex,
   numCandidates,
   type VectorIndexSpec,
@@ -44,7 +46,7 @@ export interface KnowledgeMatch {
   title: string;
   headingPath: string[];
   text: string;
-  /** Atlas Vector Search score, 0 to 1 (higher is closer). */
+  /** Higher is better, on the scale of the search mode (see ToolMatch.score). */
   score: number;
 }
 
@@ -59,6 +61,16 @@ const VECTOR_INDEX: VectorIndexSpec = {
   name: 'knowledge_chunks_vector',
   filterPaths: ['tenantId', 'source'],
 };
+const TEXT_INDEX = {
+  name: 'knowledge_chunks_text',
+  textPaths: ['text', 'headingPath'],
+  filterPaths: ['tenantId', 'source'],
+};
+/** Results each side contributes before hybrid fusion. */
+const FUSION_DEPTH = 20;
+
+/** The stored fields a search returns, renamed to the KnowledgeMatch shape. */
+const MATCH_FIELDS = { _id: 0, id: '$chunkId', docId: 1, title: 1, headingPath: 1, text: 1 };
 
 export class KnowledgeIndex {
   private readonly chunks: Collection<StoredChunk>;
@@ -74,7 +86,7 @@ export class KnowledgeIndex {
     this.cache = new EmbeddingCache(db);
   }
 
-  /** Creates the unique index and the vector search index if missing, and waits until queryable. */
+  /** Creates the unique, vector and keyword indexes if missing, and waits until both are queryable. */
   async ensureIndexes(timeoutMs = 60_000): Promise<void> {
     await this.chunks.createIndex(
       { tenantId: 1, source: 1, chunkId: 1 },
@@ -82,6 +94,7 @@ export class KnowledgeIndex {
       undefined,
     );
     await ensureVectorIndex(this.chunks, VECTOR_INDEX, this.provider, timeoutMs);
+    await ensureTextIndex(this.chunks, TEXT_INDEX, timeoutMs);
   }
 
   /**
@@ -142,12 +155,44 @@ export class KnowledgeIndex {
   }
 
   /**
-   * The k chunks of one source closest to a question, best first, with their text and metadata.
+   * The k chunks of one source that best match a question, best first, with their text and
+   * metadata. Modes as in ToolIndex.search: `vector`, `keyword` (BM25 over text and headings),
+   * or `hybrid` (both, merged with RRF).
    * Before -> after: `'can a customer return a mug they did not like?', 3` ->
    * `[{ id: 'refund-policy#changed-their-mind', text: 'Use the reason ...', score: 0.86 }, ...]`
    * (scores illustrative).
    */
-  async search(scope: KnowledgeScope, query: string, k: number): Promise<KnowledgeMatch[]> {
+  async search(
+    scope: KnowledgeScope,
+    query: string,
+    k: number,
+    mode: SearchMode = 'vector',
+  ): Promise<KnowledgeMatch[]> {
+    if (mode === 'vector') return this.vectorSearch(scope, query, k);
+    if (mode === 'keyword') return this.keywordSearch(scope, query, k);
+    const depth = Math.max(k, FUSION_DEPTH);
+    const [byMeaning, byWords] = await Promise.all([
+      this.vectorSearch(scope, query, depth),
+      this.keywordSearch(scope, query, depth),
+    ]);
+    const matchOf = new Map([...byMeaning, ...byWords].map((m) => [m.id, m]));
+    return reciprocalRankFusion([
+      { ids: byMeaning.map((m) => m.id) },
+      { ids: byWords.map((m) => m.id) },
+    ])
+      .slice(0, k)
+      .flatMap(({ id, score }) => {
+        const match = matchOf.get(id);
+        return match ? [{ ...match, score }] : [];
+      });
+  }
+
+  /** Semantic search with the knowledge query instruction. */
+  private async vectorSearch(
+    scope: KnowledgeScope,
+    query: string,
+    k: number,
+  ): Promise<KnowledgeMatch[]> {
     const queryVector = await this.provider.embedQuery(query, this.queryInstruction);
     return this.chunks
       .aggregate<KnowledgeMatch>([
@@ -161,17 +206,33 @@ export class KnowledgeIndex {
             filter: { tenantId: scope.tenantId, source: scope.source },
           },
         },
+        { $project: { ...MATCH_FIELDS, score: { $meta: 'vectorSearchScore' } } },
+      ])
+      .toArray();
+  }
+
+  /** BM25 over the section text and its headings, pre-filtered to one tenant's source. */
+  private async keywordSearch(
+    scope: KnowledgeScope,
+    query: string,
+    k: number,
+  ): Promise<KnowledgeMatch[]> {
+    return this.chunks
+      .aggregate<KnowledgeMatch>([
         {
-          $project: {
-            _id: 0,
-            id: '$chunkId',
-            docId: 1,
-            title: 1,
-            headingPath: 1,
-            text: 1,
-            score: { $meta: 'vectorSearchScore' },
+          $search: {
+            index: TEXT_INDEX.name,
+            compound: {
+              must: [{ text: { query, path: ['text', 'headingPath'] } }],
+              filter: [
+                { equals: { path: 'tenantId', value: scope.tenantId } },
+                { equals: { path: 'source', value: scope.source } },
+              ],
+            },
           },
         },
+        { $limit: k },
+        { $project: { ...MATCH_FIELDS, score: { $meta: 'searchScore' } } },
       ])
       .toArray();
   }

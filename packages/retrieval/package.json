@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "index:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/index-check.js",
     "knowledge:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/knowledge-check.js",
+    "experiments": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/experiments.js",
     "recall": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/recall.js"
   },
   "dependencies": {
