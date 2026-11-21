@@ -25,6 +25,25 @@ export function embeddingKey(provider: EmbeddingProvider, text: string): string 
   return sha256(`${provider.model}\n${String(provider.dimensions)}\n${text}`);
 }
 
+/**
+ * Vectors for these texts: from the cache where possible, the rest embedded by the model and
+ * cached for next time. Shared by every index's incremental reindex.
+ * Before -> after: 3 texts, 1 of them cached -> `{ vectorOf: Map(3 keys), embedded: 2 }`.
+ */
+export async function vectorsFor(
+  cache: EmbeddingCache,
+  provider: EmbeddingProvider,
+  items: { key: string; text: string }[],
+): Promise<{ vectorOf: Map<string, number[]>; embedded: number }> {
+  const cached = await cache.getMany(items.map((item) => item.key));
+  const missing = items.filter((item) => !cached.has(item.key));
+  const fresh = await provider.embed(missing.map((item) => item.text));
+  const freshEntries = missing.map((item, i) => ({ key: item.key, vector: fresh[i] ?? [] }));
+  await cache.setMany(provider, freshEntries);
+  for (const entry of freshEntries) cached.set(entry.key, entry.vector);
+  return { vectorOf: cached, embedded: missing.length };
+}
+
 export class EmbeddingCache {
   private readonly collection: Collection<CachedEmbedding>;
 

@@ -19,6 +19,7 @@
     "chat": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/chat.js",
     "failure-lab": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/failure-lab.js",
     "bench:context": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/bench-context.js",
+    "knowledge:eval": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/knowledge-eval.js",
     "openapi:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/openapi-check.js"
   },
   "dependencies": {

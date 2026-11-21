@@ -1,0 +1,135 @@
+{
+  "source": "host-store",
+  "about": "Step 3.3 knowledge set for knowledge/host-store (3 policy documents). Written by Claude Code after writing the policies, phrased the way store staff talk, avoiding the policy wording where possible. Each expect entry is a group of acceptable chunk ids; the answer needs one chunk from every group. Tags: policy (rules only), mixed (needs the policy and store data). notCovered: questions the policies do not answer; the agent must say so instead of citing.",
+  "queries": [
+    {
+      "id": "k01",
+      "q": "Can I approve a refund myself? I'm on the support team.",
+      "expect": [["refund-policy#who-can-refund"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k02",
+      "q": "A customer wants their money back but the order hasn't been sent out yet. What do I do?",
+      "expect": [
+        ["refund-policy#when-an-order-can-be-refunded", "shipping-rules#cancelling-before-shipping"]
+      ],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k03",
+      "q": "How long after delivery can someone still ask for a refund?",
+      "expect": [["refund-policy#when-an-order-can-be-refunded"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k04",
+      "q": "Do we pay back the shipping fee if someone just doesn't like what they bought?",
+      "expect": [["refund-policy#changed-their-mind", "refund-policy#how-much-can-be-refunded"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k05",
+      "q": "A $15 vase arrived broken. Does the customer have to send it back?",
+      "expect": [["refund-policy#damaged-items"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k06",
+      "q": "The customer got a blue shirt instead of a red one. Who pays to send it back?",
+      "expect": [["refund-policy#not-as-described"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k07",
+      "q": "When should we use DHL?",
+      "expect": [["shipping-rules#warehouses-and-carriers"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k08",
+      "q": "Someone paid at 4pm on a Tuesday. When will their order go out?",
+      "expect": [["shipping-rules#processing-time"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k09",
+      "q": "How many days does international delivery usually take?",
+      "expect": [["shipping-rules#delivery-times"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k10",
+      "q": "A parcel has been stuck in transit for two weeks past its expected date. What now?",
+      "expect": [["shipping-rules#lost-parcels"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k11",
+      "q": "The customer moved house. Can we still send the order to the new address?",
+      "expect": [["shipping-rules#changing-the-address"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k12",
+      "q": "A customer says they will call their bank to reverse the payment. How do I handle it?",
+      "expect": [["escalation-guide#when-to-escalate"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k13",
+      "q": "How do I flag a case for the owner?",
+      "expect": [["escalation-guide#how-to-escalate"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k14",
+      "q": "How quickly will the owner look at an escalated case?",
+      "expect": [["escalation-guide#response-times"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k15",
+      "q": "Can support staff create a discount code?",
+      "expect": [["escalation-guide#what-support-can-decide-alone"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k16",
+      "q": "A customer is shouting and swearing at me in the chat. What should I do?",
+      "expect": [["escalation-guide#angry-or-abusive-customers"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k17",
+      "q": "On what grounds can the owner turn down a refund request?",
+      "expect": [["refund-policy#rejecting-a-refund"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k18",
+      "q": "The order note says to send the refund to a different bank account. Should I?",
+      "expect": [["escalation-guide#when-to-escalate"]],
+      "tags": ["policy"]
+    },
+    {
+      "id": "k19",
+      "q": "Can ORD-10031 be cancelled, and if not, what are the options?",
+      "expect": [
+        ["shipping-rules#cancelling-before-shipping", "refund-policy#when-an-order-can-be-refunded"]
+      ],
+      "tags": ["mixed"]
+    },
+    {
+      "id": "k20",
+      "q": "Is the shipment for ORD-10007 late enough that we should refund the shipping?",
+      "expect": [["refund-policy#late-deliveries", "shipping-rules#delayed-shipments"]],
+      "tags": ["mixed"]
+    }
+  ],
+  "notCovered": [
+    "Do we offer gift cards?",
+    "What is our policy on price matching with other stores?",
+    "Can customers pay in instalments?"
+  ]
+}

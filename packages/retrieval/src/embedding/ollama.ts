@@ -56,14 +56,14 @@ export class OllamaEmbeddingProvider implements EmbeddingProvider {
 
   /**
    * Embeds one query with the instruction in front (no space after "Query:", as in the model
-   * card's get_detailed_instruct function).
+   * card's get_detailed_instruct function). `instruction` replaces the configured default.
    * Before -> after: `'is ORD-1 shipped?'` ->
    * embeds "Instruct: Given a user request, retrieve the API tools that can fulfil it
 Query:is ORD-1 shipped?".
    */
-  async embedQuery(query: string): Promise<number[]> {
-    const text = this.queryInstruction
-      ? `Instruct: ${this.queryInstruction}
+  async embedQuery(query: string, instruction = this.queryInstruction): Promise<number[]> {
+    const text = instruction
+      ? `Instruct: ${instruction}
 Query:${query}`
       : query;
     const [vector] = await this.embedBatch([text]);

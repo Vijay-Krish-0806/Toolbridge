@@ -16,8 +16,9 @@ export interface EmbeddingProvider {
   /**
    * Embeds a search query. Instruction-aware models (Qwen3-Embedding) want a task instruction on
    * the query side only; documents go through `embed` unchanged, so changing the instruction
-   * never re-embeds the index.
+   * never re-embeds the index. `instruction` overrides the provider's default task, because each
+   * index searches for something different (tools, policy passages).
    * Before -> after: `'refund a damaged order'` -> one vector of `dimensions` numbers.
    */
-  embedQuery(query: string): Promise<number[]>;
+  embedQuery(query: string, instruction?: string): Promise<number[]>;
 }

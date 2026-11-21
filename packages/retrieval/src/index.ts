@@ -4,7 +4,15 @@ export { loadEmbeddingConfig, type EmbeddingConfig } from './config.js';
 export { buildToolText } from './tool-text.js';
 export { EmbeddingCache, embeddingKey } from './embedding-cache.js';
 export { ToolIndex, type IndexScope, type ReindexSummary, type ToolMatch } from './tool-index.js';
-export { connectToolIndex } from './connect.js';
+export { connectKnowledgeIndex, connectToolIndex, type ConnectOptions } from './connect.js';
+export { buildChunkText, chunkMarkdown, type KnowledgeChunk } from './knowledge/chunker.js';
+export { loadKnowledgeDir } from './knowledge/load.js';
+export {
+  KNOWLEDGE_QUERY_INSTRUCTION,
+  KnowledgeIndex,
+  type KnowledgeMatch,
+  type KnowledgeScope,
+} from './knowledge/knowledge-index.js';
 export {
   DEFAULT_SELECTOR,
   VectorToolSelector,

@@ -1,0 +1,738 @@
+{
+  "meta": {
+    "date": "2026-11-21",
+    "chat model": "toolbridge-qwen3.5-4b-16k",
+    "embedding model": "qwen3-embedding:0.6b",
+    "passages per search": "4",
+    "knowledge": "`knowledge/host-store` (24 chunks, sha256 `0783d86aa42a`)",
+    "dataset": "`evals/knowledge/host-store.json` (sha256 `5a10f476e63a`)"
+  },
+  "retrieval": [
+    {
+      "id": "k01",
+      "hitRank": 2,
+      "top": [
+        "escalation-guide#what-support-can-decide-alone",
+        "refund-policy#who-can-refund",
+        "refund-policy#when-an-order-can-be-refunded"
+      ],
+      "topScore": 0.8868013620376587
+    },
+    {
+      "id": "k02",
+      "hitRank": 2,
+      "top": [
+        "refund-policy#damaged-items",
+        "refund-policy#when-an-order-can-be-refunded",
+        "refund-policy#late-deliveries"
+      ],
+      "topScore": 0.8300803303718567
+    },
+    {
+      "id": "k03",
+      "hitRank": 1,
+      "top": [
+        "refund-policy#when-an-order-can-be-refunded",
+        "refund-policy#late-deliveries",
+        "refund-policy#damaged-items"
+      ],
+      "topScore": 0.8731849193572998
+    },
+    {
+      "id": "k04",
+      "hitRank": 1,
+      "top": [
+        "refund-policy#changed-their-mind",
+        "refund-policy#damaged-items",
+        "refund-policy#late-deliveries"
+      ],
+      "topScore": 0.8290743827819824
+    },
+    {
+      "id": "k05",
+      "hitRank": 1,
+      "top": [
+        "refund-policy#damaged-items",
+        "refund-policy#not-as-described",
+        "refund-policy#changed-their-mind"
+      ],
+      "topScore": 0.8314554691314697
+    },
+    {
+      "id": "k06",
+      "hitRank": 1,
+      "top": [
+        "refund-policy#not-as-described",
+        "refund-policy#damaged-items",
+        "refund-policy#changed-their-mind"
+      ],
+      "topScore": 0.8318964838981628
+    },
+    {
+      "id": "k07",
+      "hitRank": 2,
+      "top": [
+        "shipping-rules#delivery-times",
+        "shipping-rules#warehouses-and-carriers",
+        "shipping-rules#who-ships-orders"
+      ],
+      "topScore": 0.7895923256874084
+    },
+    {
+      "id": "k08",
+      "hitRank": 1,
+      "top": [
+        "shipping-rules#processing-time",
+        "shipping-rules#who-ships-orders",
+        "refund-policy#late-deliveries"
+      ],
+      "topScore": 0.8219890594482422
+    },
+    {
+      "id": "k09",
+      "hitRank": 1,
+      "top": [
+        "shipping-rules#delivery-times",
+        "refund-policy#late-deliveries",
+        "shipping-rules#who-ships-orders"
+      ],
+      "topScore": 0.8782772421836853
+    },
+    {
+      "id": "k10",
+      "hitRank": 1,
+      "top": [
+        "shipping-rules#lost-parcels",
+        "refund-policy#late-deliveries",
+        "shipping-rules#delayed-shipments"
+      ],
+      "topScore": 0.8737965226173401
+    },
+    {
+      "id": "k11",
+      "hitRank": 1,
+      "top": [
+        "shipping-rules#changing-the-address",
+        "shipping-rules#who-ships-orders",
+        "shipping-rules#cancelling-before-shipping"
+      ],
+      "topScore": 0.8420908451080322
+    },
+    {
+      "id": "k12",
+      "top": [
+        "refund-policy#who-can-refund",
+        "shipping-rules#cancelling-before-shipping",
+        "refund-policy#intro"
+      ],
+      "topScore": 0.7653794884681702
+    },
+    {
+      "id": "k13",
+      "hitRank": 3,
+      "top": [
+        "escalation-guide#intro",
+        "escalation-guide#when-to-escalate",
+        "escalation-guide#how-to-escalate"
+      ],
+      "topScore": 0.8075827360153198
+    },
+    {
+      "id": "k14",
+      "hitRank": 2,
+      "top": [
+        "escalation-guide#intro",
+        "escalation-guide#response-times",
+        "escalation-guide#how-to-escalate"
+      ],
+      "topScore": 0.8437206745147705
+    },
+    {
+      "id": "k15",
+      "hitRank": 1,
+      "top": [
+        "escalation-guide#what-support-can-decide-alone",
+        "refund-policy#who-can-refund",
+        "shipping-rules#intro"
+      ],
+      "topScore": 0.7603980302810669
+    },
+    {
+      "id": "k16",
+      "hitRank": 1,
+      "top": [
+        "escalation-guide#angry-or-abusive-customers",
+        "escalation-guide#when-to-escalate",
+        "refund-policy#intro"
+      ],
+      "topScore": 0.7954431176185608
+    },
+    {
+      "id": "k17",
+      "hitRank": 1,
+      "top": [
+        "refund-policy#rejecting-a-refund",
+        "refund-policy#who-can-refund",
+        "refund-policy#when-an-order-can-be-refunded"
+      ],
+      "topScore": 0.8783192038536072
+    },
+    {
+      "id": "k18",
+      "top": [
+        "refund-policy#who-can-refund",
+        "refund-policy#not-as-described",
+        "refund-policy#how-much-can-be-refunded"
+      ],
+      "topScore": 0.8356006145477295
+    },
+    {
+      "id": "k19",
+      "hitRank": 1,
+      "top": [
+        "shipping-rules#cancelling-before-shipping",
+        "refund-policy#who-can-refund",
+        "refund-policy#late-deliveries"
+      ],
+      "topScore": 0.766491711139679
+    },
+    {
+      "id": "k20",
+      "hitRank": 1,
+      "top": [
+        "refund-policy#late-deliveries",
+        "shipping-rules#who-ships-orders",
+        "shipping-rules#cancelling-before-shipping"
+      ],
+      "topScore": 0.8816537857055664
+    }
+  ],
+  "agent": [
+    {
+      "id": "k01",
+      "question": "Can I approve a refund myself? I'm on the support team.",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#who-can-refund"
+        ],
+        "grounded": [
+          "refund-policy#who-can-refund"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13146,
+      "seconds": 45,
+      "answer": "No, you cannot approve a refund yourself as support staff. According to the refund policy:\n\n- **Support staff and owners can request a refund** [refund-policy#who-can-refund]\n- **Only the owner can approve or reject a refund** [refund-policy#who-can-refund]\n- Requests start as pending, and no money moves until the owner approves it [refund-policy#who-can-refund]\n\nSupport staff can request refunds (up to $200 within the refund window), but approval requires the owner's role."
+    },
+    {
+      "id": "k02",
+      "question": "A customer wants their money back but the order hasn't been sent out yet. What do I do?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#when-an-order-can-be-refunded",
+          "shipping-rules#cancelling-before-shipping"
+        ],
+        "grounded": [
+          "refund-policy#when-an-order-can-be-refunded",
+          "shipping-rules#cancelling-before-shipping"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13159,
+      "seconds": 46.3,
+      "answer": "For an order that hasn't been shipped yet, **you should cancel the order instead of requesting a refund** [refund-policy#when-an-order-can-be-refunded].\n\nAccording to the refund policy:\n- A refund can only be requested for an order that has shipped or been delivered\n- Orders that are still pending or paid cannot be refunded; they must be cancelled instead [refund-policy#when-an-order-can-be-refunded, shipping-rules#cancelling-before-shipping]"
+    },
+    {
+      "id": "k03",
+      "question": "How long after delivery can someone still ask for a refund?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [],
+        "grounded": [],
+        "ungrounded": []
+      },
+      "correct": false,
+      "grounded": true,
+      "warning": "the answer cites no policy passage, although knowledge_search returned some; check it against the policies",
+      "stopReason": "answer",
+      "inputTokens": 13140,
+      "seconds": 27.2,
+      "answer": "Based on the refund policy, you can request a refund within **30 days** of delivery for standard customers, or **45 days** if you're a Gold tier customer. After this window, an exception must be made and approved by store staff with a justification provided."
+    },
+    {
+      "id": "k04",
+      "question": "Do we pay back the shipping fee if someone just doesn't like what they bought?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#changed-their-mind"
+        ],
+        "grounded": [
+          "refund-policy#changed-their-mind"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13109,
+      "seconds": 39.1,
+      "answer": "No, we do not pay back the shipping fee if someone just doesn't like what they bought. According to our refund policy:\n\nFor a **change of mind**, the customer must:\n- Have unused items in original packaging\n- Pay return shipping costs themselves\n- Accept that no refund for shipping fees is given\n\nThis only applies unless the item was clearly used or if you're requesting a refund outside the allowed timeframe. The store does pay return shipping only when the item arrived incorrectly, damaged, or not as described [refund-policy#changed-their-mind]."
+    },
+    {
+      "id": "k05",
+      "question": "A $15 vase arrived broken. Does the customer have to send it back?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#damaged-items"
+        ],
+        "grounded": [
+          "refund-policy#damaged-items"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13124,
+      "seconds": 32.8,
+      "answer": "Based on the store's refund policy for damaged items:\n\n[refund-policy#damaged-items] For items under $25, the customer does not need to send the item back.\n\nSince the vase cost $15 (under the $25 threshold), **the customer does not have to send it back**. The store will handle the refund directly."
+    },
+    {
+      "id": "k06",
+      "question": "The customer got a blue shirt instead of a red one. Who pays to send it back?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#not-as-described"
+        ],
+        "grounded": [
+          "refund-policy#not-as-described"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13106,
+      "seconds": 38.4,
+      "answer": "According to the store's refund policy [refund-policy#not-as-described], when a customer receives the wrong item (such as a blue shirt instead of red), the **store pays for the return shipping**, and refunds the full amount including shipping. The refund reason used should be `not_as_described`."
+    },
+    {
+      "id": "k07",
+      "question": "When should we use DHL?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "shipping-rules#warehouses-and-carriers"
+        ],
+        "grounded": [
+          "shipping-rules#warehouses-and-carriers"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13066,
+      "seconds": 35.3,
+      "answer": "According to our shipping policies [shipping-rules#warehouses-and-carriers], **DHL should be used for international orders**.\n\nFor domestic shipments, the policy recommends:\n- USPS for domestic parcels under 2 kg\n- UPS or FedEx for heavier domestic parcels\n- DHL for international orders\n\nNote that delivery times differ by carrier: standard domestic delivery takes 3 to 7 business days, while international delivery with DHL takes 7 to 14 business days."
+    },
+    {
+      "id": "k08",
+      "question": "Someone paid at 4pm on a Tuesday. When will their order go out?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "shipping-rules#processing-time"
+        ],
+        "grounded": [
+          "shipping-rules#processing-time"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13082,
+      "seconds": 39,
+      "answer": "According to store shipping rules [shipping-rules#processing-time], **orders paid after 2 pm ship from the next business day**.\n\nSince this order was paid at 4pm on a Tuesday, it will ship on Wednesday (the next business day)."
+    },
+    {
+      "id": "k09",
+      "question": "How many days does international delivery usually take?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "shipping-rules#delivery-times"
+        ],
+        "grounded": [
+          "shipping-rules#delivery-times"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13077,
+      "seconds": 25,
+      "answer": "Based on store policy, international delivery with DHL typically takes **7 to 14 business days** [shipping-rules#delivery-times]. \n\nEvery shipment gets an estimated delivery date from the carrier when it is created, and that date is what customers are told."
+    },
+    {
+      "id": "k10",
+      "question": "A parcel has been stuck in transit for two weeks past its expected date. What now?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "shipping-rules#delayed-shipments",
+          "refund-policy#late-deliveries"
+        ],
+        "grounded": [
+          "shipping-rules#delayed-shipments",
+          "refund-policy#late-deliveries"
+        ],
+        "ungrounded": []
+      },
+      "correct": false,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13094,
+      "seconds": 64,
+      "answer": "Based on store policies, here's what to do when a shipment is delayed:\n\n**For delays over 2 days:** Contact the customer once a shipment is **2 days late** [shipping-rules#delayed-shipments].\n\n**For delays over 3 days:** Offer a shipping refund with reason `late_delivery`. The customer keeps the item [refund-policy#late-deliveries].\n\nSince your parcel has been stuck in transit for **two weeks past its expected date**, it's well beyond the 3-day threshold. You should:\n1. Contact the customer about the delay\n2. Offer a refund for just the shipping cost (not the entire order value)\n3. Use reason code `late_delivery` when processing the refund\n\nThe store doesn't have an automatic \"delayed\" flag - delays are identified by comparing the estimated delivery date with today's date [shipping-rules#delayed-shipments]."
+    },
+    {
+      "id": "k11",
+      "question": "The customer moved house. Can we still send the order to the new address?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "shipping-rules#changing-the-address"
+        ],
+        "grounded": [
+          "shipping-rules#changing-the-address"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13050,
+      "seconds": 43.2,
+      "answer": "Based on store policies, the delivery address **can only be changed before the order ships** [shipping-rules#changing-the-address]. After the order has been shipped, the address cannot be changed and the customer must contact the carrier directly.\n\nTo help you proceed:\n\n1. **Has this order already been shipped?**\n   - If yes: The address cannot be changed. I can look up the order details and advise on next steps.\n   - If no: We can update the customer's address and add a note to the order explaining what changed.\n\nI'll need to check your specific order status first. Could you provide the order number or customer details?"
+    },
+    {
+      "id": "k12",
+      "question": "A customer says they will call their bank to reverse the payment. How do I handle it?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#who-can-refund",
+          "refund-policy#changed-their-mind"
+        ],
+        "grounded": [
+          "refund-policy#who-can-refund",
+          "refund-policy#changed-their-mind"
+        ],
+        "ungrounded": []
+      },
+      "correct": false,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13077,
+      "seconds": 114.9,
+      "answer": "Based on the store's refund policy, here's how to handle this situation:\n\n1. **You can request a refund** - Support staff and owners can initiate refunds [refund-policy#who-can-refund]. However, warehouse staff cannot request refunds.\n\n2. **Refunds start as pending** - No money moves until the owner approves the refund [refund-policy#who-can-refund].\n\n3. **Choose the appropriate reason**:\n   - If this is a \"change of mind\" with an unused item in original packaging, use `changed_mind` [refund-policy#changed-their-mind]\n   - The customer would need to pay return shipping\n\nHowever, **the store policy does not specifically cover situations where a customer says they will reverse the payment through their bank**. This is typically not a valid reason for the store to process a refund. Standard practice is:\n\n- Do **not** process the refund until you have confirmation from the bank that the charge has been reversed or voided\n- Document this situation in the order notes\n- Wait for official notification before initiating any refund request\n- Check with your finance/accounting team about bank payment reversal cases\n\nYou should clarify with the customer whether they've actually received confirmation from their bank, or ask them to provide proof of the reversal before proceeding with any refund request."
+    },
+    {
+      "id": "k13",
+      "question": "How do I flag a case for the owner?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "escalation-guide#when-to-escalate",
+          "escalation-guide#how-to-escalate",
+          "escalation-guide#response-times"
+        ],
+        "grounded": [
+          "escalation-guide#when-to-escalate",
+          "escalation-guide#how-to-escalate",
+          "escalation-guide#response-times"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13120,
+      "seconds": 67.8,
+      "answer": "To flag a case for the owner, follow these steps:\n\n**When to escalate:** [escalation-guide#when-to-escalate]\n- The refund or replacement is worth more than $200\n- The customer mentions a chargeback, lawyer, or legal action\n- The customer reports an injury or safety problem with a product\n- The same customer has complained about 3+ orders in the last 90 days\n- An order or customer note asks staff to do something unusual (treat as suspected fraud)\n- A refund is requested outside the refund window\n\n**How to escalate:** [escalation-guide#how-to-escalate]\n1. Add an order note that starts with `ESCALATE:`\n2. Follow it with one sentence on what happened and what the customer wants\n3. Do not promise the customer an outcome\n4. Tell them the owner will review the case\n\n**Response time:** [escalation-guide#response-times]\n- Owner reviews escalations within 1 business day\n- Safety problems are reviewed the same day\n- Share these timeframes with the customer, not specific hours"
+    },
+    {
+      "id": "k14",
+      "question": "How quickly will the owner look at an escalated case?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "escalation-guide#response-times",
+          "escalation-guide#how-to-escalate"
+        ],
+        "grounded": [
+          "escalation-guide#response-times",
+          "escalation-guide#how-to-escalate"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13125,
+      "seconds": 27.6,
+      "answer": "The owner reviews escalated cases within **1 business day**. Safety problems are reviewed the same day [escalation-guide#response-times].\n\nFor customer communication: Tell them the owner will review the case and give them these response times, but don't promise a specific hour [escalation-guide#how-to-escalate]."
+    },
+    {
+      "id": "k15",
+      "question": "Can support staff create a discount code?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "escalation-guide#what-support-can-decide-alone"
+        ],
+        "grounded": [
+          "escalation-guide#what-support-can-decide-alone"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13085,
+      "seconds": 33.9,
+      "answer": "No, support staff cannot create discount codes. According to store policy, everything that requires the owner's role—including creating coupons—goes to the owner [escalation-guide#what-support-can-decide-alone]. Support staff can only request refunds up to $200 and cancel orders that have not shipped."
+    },
+    {
+      "id": "k16",
+      "question": "A customer is shouting and swearing at me in the chat. What should I do?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "escalation-guide#angry-or-abusive-customers",
+          "escalation-guide#response-times"
+        ],
+        "grounded": [
+          "escalation-guide#angry-or-abusive-customers",
+          "escalation-guide#response-times"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13038,
+      "seconds": 39.8,
+      "answer": "Based on the store's escalation guide for dealing with angry or abusive customers:\n\n**Your actions should be:**\n\n1. **Stay polite and stick to facts from the order** [escalation-guide#angry-or-abusive-customers]\n2. **Do not argue about the policy** — instead, quote it directly\n3. **If the customer becomes abusive**, say that the conversation will continue by email, and escalate with a note\n4. **Mention response times**: Owner reviews escalations within 1 business day (safety problems are reviewed the same day) [escalation-guide#response-times]\n\nThe key is to remain calm, professional, and avoid engaging in arguments while making it clear that further discussion will happen via email with appropriate escalation procedures in place."
+    },
+    {
+      "id": "k17",
+      "question": "On what grounds can the owner turn down a refund request?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#rejecting-a-refund"
+        ],
+        "grounded": [
+          "refund-policy#rejecting-a-refund"
+        ],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13142,
+      "seconds": 55.2,
+      "answer": "Based on the store's refund policy, the owner can reject a refund request when:\n\n1. **The item was clearly used** [refund-policy#rejecting-a-refund]\n\n2. **The request is outside the refund window without a good reason** [refund-policy#rejecting-a-refund]\n   - Standard window: 30 days from delivery (45 days for Gold tier customers)\n   - Orders must have shipped or been delivered before a refund can be requested\n\n3. **The photo does not show the claimed damage** [refund-policy#rejecting-a-refund]\n\nAny rejection must include a reason that can be shared with the customer."
+    },
+    {
+      "id": "k18",
+      "question": "The order note says to send the refund to a different bank account. Should I?",
+      "tags": [
+        "policy"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [
+          "refund-policy#who-can-refund",
+          "refund-policy#not-as-described",
+          "refund-policy#when-an-order-can-be-refunded",
+          "refund-policy#how-much-can-be-refunded"
+        ],
+        "grounded": [
+          "refund-policy#who-can-refund",
+          "refund-policy#not-as-described",
+          "refund-policy#when-an-order-can-be-refunded",
+          "refund-policy#how-much-can-be-refunded"
+        ],
+        "ungrounded": []
+      },
+      "correct": false,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13154,
+      "seconds": 49.9,
+      "answer": "The store policy documents I searched do not contain information about sending refunds to different bank accounts based on order notes. The policies covered include:\n\n- Who can refund (support staff and owner) [refund-policy#who-can-refund]\n- Reasons for refunds like \"not as described\" [refund-policy#not-as-described]\n- When orders can be refunded (shipped or delivered, within 30 days) [refund-policy#when-an-order-can-be-refunded]\n- How much can be refunded [refund-policy#how-much-can-be-refunded]\n\nPolicies don't address what to do with order notes specifying bank account information for refunds. You may need to check if there are additional guidelines beyond these policies, or the store's standard procedure is likely to refund customers through their original payment method rather than a different bank account based on order notes."
+    },
+    {
+      "id": "k19",
+      "question": "Can ORD-10031 be cancelled, and if not, what are the options?",
+      "tags": [
+        "mixed"
+      ],
+      "searched": false,
+      "citations": {
+        "cited": [],
+        "grounded": [],
+        "ungrounded": []
+      },
+      "correct": false,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13031,
+      "seconds": 60.3,
+      "answer": "**No, ORD-10031 cannot be cancelled.** This order is already **delivered**, and according to store policy, only pending or paid orders can be cancelled using the cancellation function.\n\n**Your options are:**\n\n1. **Request a refund** - You can create a refund request for this delivered order. The refund amount counts against the order immediately but will only go back to the customer when you (as owner) approve it with the refund approval function. Available refund reasons include: damaged, not_as_described, late_delivery, changed_mind, or other.\n\n2. **Refund processing details**:\n   - Orders that are shipped or delivered can have refunds requested\n   - The refund amount counts against the order at once\n   - Money moves back to the customer only when you approve it as owner\n   - You can also reject pending refund requests if needed\n\nWould you like me to help you create a refund request for this order, or do you need information about other store policies?"
+    },
+    {
+      "id": "k20",
+      "question": "Is the shipment for ORD-10007 late enough that we should refund the shipping?",
+      "tags": [
+        "mixed"
+      ],
+      "searched": false,
+      "citations": {
+        "cited": [],
+        "grounded": [],
+        "ungrounded": []
+      },
+      "correct": false,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 42487,
+      "seconds": 160.8,
+      "answer": "Based on the data I've found:\n\n**ORD-10007 Status:** The order shows as **\"delivered\"** (not in transit). Since the order has already been delivered, there's no need to refund shipping for a late delivery - the shipment is complete.\n\nThe order was placed on 2026-10-13T21:00:00Z and contains three items totaling $328.93. However, I couldn't find any associated shipment record for this order in the system.\n\n**Answer:** No, there is no late delivery refund needed because the order status is \"delivered\" - the transaction is complete."
+    },
+    {
+      "id": "n01",
+      "question": "Do we offer gift cards?",
+      "tags": [
+        "not-covered"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [],
+        "grounded": [],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13035,
+      "seconds": 23.2,
+      "answer": "The store's policies do not cover gift cards. The documents I found are about refund policy, shipping rules, and who can request or approve refunds, but nothing about gift cards being offered."
+    },
+    {
+      "id": "n02",
+      "question": "What is our policy on price matching with other stores?",
+      "tags": [
+        "not-covered"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [],
+        "grounded": [],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13059,
+      "seconds": 28.3,
+      "answer": "The store's available policies do not include information about price matching with other stores. The policy documents I searched cover topics like shipping rules and refunds for damaged or incorrectly described items, but there is no mention of a price matching program or policy."
+    },
+    {
+      "id": "n03",
+      "question": "Can customers pay in instalments?",
+      "tags": [
+        "not-covered"
+      ],
+      "searched": true,
+      "citations": {
+        "cited": [],
+        "grounded": [],
+        "ungrounded": []
+      },
+      "correct": true,
+      "grounded": true,
+      "stopReason": "answer",
+      "inputTokens": 13039,
+      "seconds": 24.1,
+      "answer": "The store policies do not cover payment installments. The available information focuses on refund policy and shipping rules, but there is no policy or mention of installment payment options."
+    }
+  ]
+}

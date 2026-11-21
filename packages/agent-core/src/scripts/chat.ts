@@ -7,11 +7,11 @@
  *     specs/host-store.json (+ overrides) instead of the five hand-written ones
  *   pnpm --filter @toolbridge/agent-core chat --openapi --retrieve 5 "question"  offer only the
  *     tools picked by vector search (Step 3.2; needs MongoDB and the embedding model)
+ *   pnpm --filter @toolbridge/agent-core chat --openapi --knowledge "question"  add the
+ *     knowledge_search tool over knowledge/host-store and check the answer's citations (Step 3.3)
  * Each run is logged as JSON lines to logs/agent.ndjson, tagged with its runId.
  */
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import {
@@ -20,29 +20,23 @@ import {
   loadEmbeddingConfig,
   VectorToolSelector,
 } from '@toolbridge/retrieval';
-import {
-  compileTools,
-  loadSpec,
-  normalize,
-  parseOverrides,
-  type ToolDefinition as CompiledTool,
-} from '@toolbridge/spec-compiler';
+import type { ToolDefinition as CompiledTool } from '@toolbridge/spec-compiler';
 import { z } from 'zod';
 import { type AgentEvent, type AgentLimits, type AgentRunResult, runAgent } from '../agent/loop.js';
-import { STORE_AGENT_SYSTEM_PROMPT } from '../agent/system-prompt.js';
+import { checkCitations, citationWarning, passageIds } from '../agent/citations.js';
+import { storeAgentSystemPrompt } from '../agent/system-prompt.js';
 import type { ToolSelector } from '../agent/tool-selector.js';
 import { loadHostApiConfig, loadLLMConfig } from '../config.js';
 import { HostApiClient } from '../host-api/client.js';
 import { createHostStoreTools } from '../host-api/tools.js';
-import { TokenLogin } from '../openapi/auth.js';
-import { createOpenApiTools } from '../openapi/generated-tools.js';
-import { SafeHttpClient } from '../openapi/http-client.js';
 import { OpenAICompatibleProvider } from '../llm/openai-compatible.js';
 import type { ChatMessage } from '../llm/types.js';
 import { createFileLogger, logAgentEvent, logToolRetry } from '../logging/agent-logger.js';
 import { ToolExecutor } from '../tools/executor.js';
 import { ToolRegistry } from '../tools/registry.js';
-import type { Tool } from '../tools/tool.js';
+import { KNOWLEDGE_TOOL_NAME } from '../tools/knowledge-tool.js';
+import { createGeneratedTools } from './generated-tools.js';
+import { createKnowledge } from './knowledge-setup.js';
 
 /** Where run logs go, relative to the folder the CLI runs in (packages/agent-core). */
 const LOG_FILE = 'logs/agent.ndjson';
@@ -140,37 +134,6 @@ function printStep(event: AgentEvent): void {
 }
 
 /**
- * Compiles the host spec and its overrides into tools (Steps 2.1 to 2.3) that call the host API
- * through the SSRF-safe client, logged in as the configured staff account. Also returns the
- * compiled definitions, which the tool index embeds.
- */
-async function createGeneratedTools(): Promise<{ tools: Tool[]; compiled: CompiledTool[] }> {
-  const config = loadHostApiConfig();
-  const specs = resolve(import.meta.dirname, '../../../../specs');
-  const { model } = normalize(await loadSpec(resolve(specs, 'host-store.json')));
-  const overrides = parseOverrides(
-    JSON.parse(await readFile(resolve(specs, 'host-store.overrides.json'), 'utf8')),
-  );
-  const client = new SafeHttpClient({ allowPrivateHosts: [new URL(config.baseUrl).hostname] });
-  const auth = new TokenLogin({
-    client,
-    loginUrl: new URL('/auth/login', config.baseUrl),
-    credentials: { email: config.email, password: config.password },
-    tokenField: 'accessToken',
-  });
-  const { tools } = compileTools(model, overrides);
-  return {
-    tools: createOpenApiTools(tools, {
-      baseUrl: config.baseUrl,
-      securitySchemes: model.securitySchemes,
-      auth,
-      client,
-    }),
-    compiled: tools,
-  };
-}
-
-/**
  * Step 3.2: indexes the host tools (only changed ones are embedded) and returns a selector that
  * picks `k` of them per question. The index lives in its own database, apart from the platform's.
  * `close` ends the MongoDB connection, so the process can exit.
@@ -178,6 +141,7 @@ async function createGeneratedTools(): Promise<{ tools: Tool[]; compiled: Compil
 async function createSelector(
   compiled: CompiledTool[],
   k: number,
+  extraCore: string[],
 ): Promise<{ selector: ToolSelector; close: () => Promise<void> }> {
   const { MONGO_URI } = z.object({ MONGO_URI: z.string().min(1) }).parse(process.env);
   const { index, close } = await connectToolIndex({
@@ -193,7 +157,7 @@ async function createSelector(
     ...DEFAULT_SELECTOR,
     k,
     kFallback: Math.max(k, DEFAULT_SELECTOR.kFallback),
-    core: HOST_CORE_TOOLS,
+    core: [...HOST_CORE_TOOLS, ...extraCore],
   });
   return { selector, close };
 }
@@ -202,20 +166,25 @@ async function createSelector(
  * Wires the real pieces together (model, host API client, tools, executor, logger) and returns a
  * function that answers one question, keeping the conversation between questions.
  */
-async function createSession(
-  limits: Partial<AgentLimits>,
-  openapi: boolean,
-  retrieveK: number | undefined,
-) {
+async function createSession(options: {
+  limits: Partial<AgentLimits>;
+  openapi: boolean;
+  retrieveK: number | undefined;
+  knowledge: boolean;
+}) {
+  const { limits, openapi, retrieveK } = options;
   const llmConfig = loadLLMConfig();
   const llm = new OpenAICompatibleProvider(llmConfig);
   const generated = openapi ? await createGeneratedTools() : undefined;
-  const registry = new ToolRegistry(
-    generated?.tools ?? createHostStoreTools(new HostApiClient(loadHostApiConfig())),
-  );
+  const knowledge = options.knowledge ? await createKnowledge(AGENT_DB) : undefined;
+  const registry = new ToolRegistry([
+    ...(generated?.tools ?? createHostStoreTools(new HostApiClient(loadHostApiConfig()))),
+    ...(knowledge ? [knowledge.tool] : []),
+  ]);
+  // The tool index holds only API tools, so knowledge_search joins the always-offered core set.
   const retrieval =
     generated && retrieveK !== undefined
-      ? await createSelector(generated.compiled, retrieveK)
+      ? await createSelector(generated.compiled, retrieveK, knowledge ? [KNOWLEDGE_TOOL_NAME] : [])
       : undefined;
   const selector = retrieval?.selector;
   const logger = createFileLogger(LOG_FILE);
@@ -226,15 +195,19 @@ async function createSession(
       logToolRetry(runLogger, event);
     },
   });
-  const systemMessage: ChatMessage = { role: 'system', content: STORE_AGENT_SYSTEM_PROMPT };
+  const systemMessage: ChatMessage = {
+    role: 'system',
+    content: storeAgentSystemPrompt({ knowledge: knowledge !== undefined }),
+  };
   let history: ChatMessage[] = [systemMessage];
 
   return {
     model: llmConfig.model,
     toolCount: registry.names().length,
-    /** Closes the tool index connection, if retrieval is on. */
+    /** Closes the index connections that are open. */
     close: async () => {
       await retrieval?.close();
+      await knowledge?.close();
     },
     /** Forgets the conversation, keeping only the system prompt. */
     reset: () => {
@@ -249,6 +222,7 @@ async function createSession(
       runLogger = logger.child({ runId });
       runLogger.info({ model: llmConfig.model, question }, 'run-start');
       const print = createPrinter();
+      const retrieved = new Set<string>();
 
       let run: AgentRunResult;
       try {
@@ -260,6 +234,9 @@ async function createSession(
           limits,
           ...(selector && { selector }),
           onEvent: (event) => {
+            if (event.type === 'tool-end') {
+              for (const id of passageIds(event.call, event.result)) retrieved.add(id);
+            }
             print(event);
             logAgentEvent(runLogger, event);
           },
@@ -273,6 +250,13 @@ async function createSession(
       const { usage } = run;
       runLogger.info({ stopReason: run.stopReason, usage, answer: run.answer }, 'run-end');
       if (run.stopReason !== 'answer') console.log(`\nagent stopped: ${run.stopReason}`);
+      if (knowledge) {
+        const citations = checkCitations(run.answer, retrieved);
+        const warning = citationWarning(citations, retrieved.size, run.answer);
+        runLogger.info({ citations, warning }, 'citations');
+        console.log(`\n  [citations: ${citations.grounded.join(', ') || 'none'}]`);
+        if (warning) console.log(`  warning: ${warning}`);
+      }
       console.log(
         `\n  [${String(usage.llmCalls)} model calls, ${String(usage.toolCalls)} tool calls, ` +
           `${String(usage.inputTokens)} in / ${String(usage.outputTokens)} out tokens]` +
@@ -295,6 +279,7 @@ async function main(): Promise<void> {
       'max-iterations': { type: 'string' },
       openapi: { type: 'boolean' },
       retrieve: { type: 'string' },
+      knowledge: { type: 'boolean' },
     },
     allowPositionals: true,
   });
@@ -307,11 +292,12 @@ async function main(): Promise<void> {
   if (retrieveK !== undefined && values.openapi !== true) {
     throw new Error('--retrieve works with the generated tools: add --openapi.');
   }
-  const session = await createSession(
-    maxIterations === undefined ? {} : { maxIterations },
-    values.openapi === true,
+  const session = await createSession({
+    limits: maxIterations === undefined ? {} : { maxIterations },
+    openapi: values.openapi === true,
     retrieveK,
-  );
+    knowledge: values.knowledge === true,
+  });
   console.log(
     `${String(session.toolCount)} tools (${values.openapi === true ? 'generated from the spec' : 'hand-written'})`,
   );

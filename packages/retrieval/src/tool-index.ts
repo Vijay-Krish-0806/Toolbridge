@@ -11,9 +11,10 @@
 import type { ToolDefinition } from '@toolbridge/spec-compiler';
 import type { Collection, Db } from 'mongodb';
 
-import { EmbeddingCache, embeddingKey } from './embedding-cache.js';
+import { EmbeddingCache, embeddingKey, vectorsFor } from './embedding-cache.js';
 import type { EmbeddingProvider } from './embedding/provider.js';
 import { buildToolText } from './tool-text.js';
+import { ensureVectorIndex, numCandidates, type VectorIndexSpec, waitFor } from './vector-index.js';
 
 /** Which tools: one spec of one tenant. Plain strings, so this package does not depend on BSON ids. */
 export interface IndexScope {
@@ -50,23 +51,10 @@ export interface ToolMatch {
   score: number;
 }
 
-/**
- * The fields we read from `listSearchIndexes`. The driver (7.8.0) types its rows as `{ name }`
- * only; the server also returns these (seen on Atlas Local 8.0).
- */
-interface ListedSearchIndex {
-  name: string;
-  /** For example PENDING, BUILDING, READY, FAILED, DELETING, DOES_NOT_EXIST. */
-  status?: string;
-  queryable?: boolean;
-  latestDefinition?: { fields?: { type?: string; numDimensions?: number }[] };
-}
-
-const VECTOR_INDEX = 'tool_vectors_vector';
-/** Statuses of an index that is going away, not one we can use. */
-const LEFTOVER_STATUSES = new Set(['DELETING', 'DOES_NOT_EXIST']);
-/** Atlas Vector Search allows at most 10,000 candidates. */
-const MAX_CANDIDATES = 10_000;
+const VECTOR_INDEX: VectorIndexSpec = {
+  name: 'tool_vectors_vector',
+  filterPaths: ['tenantId', 'specId'],
+};
 
 export class ToolIndex {
   private readonly vectors: Collection<ToolVector>;
@@ -83,11 +71,7 @@ export class ToolIndex {
 
   /**
    * Creates the unique index and the vector search index if they are missing, then waits until the
-   * vector index can be queried (about a second on Atlas Local). An existing vector index built for
-   * a different vector size is an error: it cannot hold this provider's vectors.
-   * Right after its collection is dropped, the old index is still listed for a moment with status
-   * DOES_NOT_EXIST (seen on Atlas Local 8.0). That entry counts as missing: wait for it to go away,
-   * then create the new index. Treating it as existing would wait forever for an index that is gone.
+   * vector index can be queried (details in ensureVectorIndex).
    */
   async ensureIndexes(timeoutMs = 60_000): Promise<void> {
     await this.vectors.createIndex(
@@ -95,26 +79,7 @@ export class ToolIndex {
       { unique: true },
       undefined,
     );
-    const deadline = Date.now() + timeoutMs;
-    let created = false;
-    for (;;) {
-      const [index] = await this.listVectorIndex();
-      if (index === undefined) {
-        if (!created) await this.createVectorIndex();
-        created = true;
-      } else if (index.status === 'FAILED') {
-        throw new Error(`Vector index ${VECTOR_INDEX} failed to build.`);
-      } else if (!LEFTOVER_STATUSES.has(index.status ?? '')) {
-        this.checkDimensions(index);
-        if (index.queryable === true) return;
-      }
-      if (Date.now() > deadline) {
-        throw new Error(
-          `Vector index ${VECTOR_INDEX} is not queryable after ${String(timeoutMs)} ms (status ${index?.status ?? 'none'}).`,
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    await ensureVectorIndex(this.vectors, VECTOR_INDEX, this.provider, timeoutMs);
   }
 
   /**
@@ -135,12 +100,7 @@ export class ToolIndex {
       })
       .filter(({ tool, key }) => storedHash.get(tool.name) !== key);
 
-    const cached = await this.cache.getMany(changed.map((c) => c.key));
-    const missing = changed.filter((c) => !cached.has(c.key));
-    const fresh = await this.provider.embed(missing.map((c) => c.text));
-    const freshEntries = missing.map((c, i) => ({ key: c.key, vector: fresh[i] ?? [] }));
-    await this.cache.setMany(this.provider, freshEntries);
-    const vectorOf = new Map([...cached, ...freshEntries.map((e) => [e.key, e.vector] as const)]);
+    const { vectorOf, embedded } = await vectorsFor(this.cache, this.provider, changed);
 
     const updatedAt = new Date();
     if (changed.length > 0) {
@@ -170,8 +130,8 @@ export class ToolIndex {
     return {
       total: tools.length,
       unchanged: tools.length - changed.length,
-      fromCache: changed.length - missing.length,
-      embedded: missing.length,
+      fromCache: changed.length - embedded,
+      embedded,
       removed: deletedCount,
     };
   }
@@ -189,10 +149,10 @@ export class ToolIndex {
       .aggregate<ToolMatch>([
         {
           $vectorSearch: {
-            index: VECTOR_INDEX,
+            index: VECTOR_INDEX.name,
             path: 'vector',
             queryVector,
-            numCandidates: Math.min(Math.max(k * 20, 100), MAX_CANDIDATES),
+            numCandidates: numCandidates(k),
             limit: k,
             filter: { tenantId: scope.tenantId, specId: scope.specId },
           },
@@ -213,51 +173,11 @@ export class ToolIndex {
     tool: ToolDefinition,
     timeoutMs = 120_000,
   ): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const matches = await this.search(scope, buildToolText(tool), 10);
-      if (matches.some((m) => m.toolName === tool.name)) return;
-      if (Date.now() > deadline) {
-        throw new Error(`Tool ${tool.name} is not searchable after ${String(timeoutMs)} ms.`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-
-  /** Our vector index as listed by the server (an empty array when it does not exist). */
-  private async listVectorIndex(): Promise<ListedSearchIndex[]> {
-    return this.vectors.listSearchIndexes(VECTOR_INDEX).toArray();
-  }
-
-  /** Starts building the vector search index (asynchronous on the server). */
-  private async createVectorIndex(): Promise<void> {
-    await this.vectors.createSearchIndex({
-      name: VECTOR_INDEX,
-      type: 'vectorSearch',
-      definition: {
-        fields: [
-          // The vectors are unit length (measured), so cosine and dotProduct rank the same.
-          {
-            type: 'vector',
-            path: 'vector',
-            numDimensions: this.provider.dimensions,
-            similarity: 'cosine',
-          },
-          { type: 'filter', path: 'tenantId' },
-          { type: 'filter', path: 'specId' },
-        ],
-      },
-    });
-  }
-
-  /** Throws when the index was built for a different vector size than this provider's. */
-  private checkDimensions(index: ListedSearchIndex): void {
-    const dims = index.latestDefinition?.fields?.find((f) => f.type === 'vector')?.numDimensions;
-    if (dims !== this.provider.dimensions) {
-      throw new Error(
-        `Vector index ${VECTOR_INDEX} is built for ${String(dims)} dimensions, but ${this.provider.model} ` +
-          `is configured for ${String(this.provider.dimensions)}. Drop the index and reindex.`,
-      );
-    }
+    await waitFor(
+      async () =>
+        (await this.search(scope, buildToolText(tool), 10)).some((m) => m.toolName === tool.name),
+      `Tool ${tool.name}`,
+      timeoutMs,
+    );
   }
 }
