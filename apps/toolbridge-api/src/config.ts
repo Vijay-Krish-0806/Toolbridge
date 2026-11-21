@@ -1,3 +1,4 @@
+import { type EmbeddingConfig, loadEmbeddingConfig } from '@toolbridge/retrieval';
 import { z } from 'zod';
 
 /** The placeholder in .env.example; refused so a copied example never runs as a real key. */
@@ -95,7 +96,10 @@ const envSchema = z.object({
     }),
 });
 
-export type PlatformConfig = z.infer<typeof envSchema>;
+export type PlatformConfig = z.infer<typeof envSchema> & {
+  /** The tool index's embedding model (EMBEDDING_* variables, validated by the retrieval package). */
+  embedding: EmbeddingConfig;
+};
 
 /** Validates environment variables once at startup, so a bad config fails fast with a clear message. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): PlatformConfig {
@@ -103,5 +107,5 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PlatformConfig
   if (!result.success) {
     throw new Error(`Invalid platform configuration:\n${z.prettifyError(result.error)}`);
   }
-  return result.data;
+  return { ...result.data, embedding: loadEmbeddingConfig(env) };
 }

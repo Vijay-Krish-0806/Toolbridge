@@ -7,6 +7,7 @@ import { LocalKeyProvider } from '../crypto/key-provider.js';
 export const PLATFORM_CONFIG = Symbol('PLATFORM_CONFIG');
 export const OUTBOUND_HTTP = Symbol('OUTBOUND_HTTP');
 export const KEY_PROVIDER = Symbol('KEY_PROVIDER');
+export const TOOL_INDEX = Symbol('TOOL_INDEX');
 
 /**
  * App-wide providers:

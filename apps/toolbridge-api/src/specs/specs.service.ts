@@ -2,11 +2,13 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import type { SafeHttpClient } from '@toolbridge/agent-core';
+import type { ReindexSummary, ToolIndex } from '@toolbridge/retrieval';
 import {
   compileSpec,
   type CompiledSpec,
@@ -14,12 +16,13 @@ import {
   diffModels,
   OverridesError,
   SpecLoadError,
+  type ToolDefinition,
 } from '@toolbridge/spec-compiler';
 import { type Connection, isValidObjectId, type Model, Types } from 'mongoose';
 
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
-import { PLATFORM_CONFIG, OUTBOUND_HTTP } from '../common/core.module.js';
+import { PLATFORM_CONFIG, OUTBOUND_HTTP, TOOL_INDEX } from '../common/core.module.js';
 import type { PlatformConfig } from '../config.js';
 import {
   MODEL,
@@ -41,6 +44,21 @@ export interface SpecView {
   updatedAt: Date;
 }
 
+/**
+ * The tool index after a spec upload: the reindex counts, or `stale` when embedding failed (for
+ * example Ollama is down). A stale index heals itself: the next upload re-embeds every tool whose
+ * stored text hash does not match.
+ */
+export type IndexResult = ({ status: 'indexed' } & ReindexSummary) | { status: 'stale'; error: string };
+
+/** What register and addVersion return. */
+export interface VersionResult {
+  spec: SpecView;
+  version: SpecVersion;
+  tools: ReconcileSummary;
+  index: IndexResult;
+}
+
 export interface ToolView extends ToolState {
   description: string;
 }
@@ -55,10 +73,12 @@ interface TenantStores {
 @Injectable()
 export class SpecsService {
   private readonly compiled: MongoCompiledStore;
+  private readonly logger = new Logger(SpecsService.name);
 
   constructor(
     @Inject(PLATFORM_CONFIG) private readonly config: PlatformConfig,
     @Inject(OUTBOUND_HTTP) private readonly fetchClient: SafeHttpClient,
+    @Inject(TOOL_INDEX) private readonly toolIndex: ToolIndex,
     @InjectConnection() connection: Connection,
     @InjectModel(MODEL.Spec.name) private readonly specModel: Model<Spec>,
     @InjectModel(MODEL.SpecVersion.name) private readonly versionModel: Model<SpecVersion>,
@@ -75,7 +95,7 @@ export class SpecsService {
     tenantId: Types.ObjectId,
     name: string,
     input: SpecInput & { overrides?: unknown },
-  ): Promise<{ spec: SpecView; version: SpecVersion; tools: ReconcileSummary }> {
+  ): Promise<VersionResult> {
     const db = this.stores(tenantId);
     if ((await db.specs.countDocuments()) >= this.config.MAX_SPECS_PER_TENANT) {
       throw new ConflictException(
@@ -98,7 +118,8 @@ export class SpecsService {
     });
     const { states, summary } = reconcileTools(null, result.tools, null);
     const version = await this.saveVersion(db, spec._id, 1, result, null, states);
-    return { spec: specView(spec), version, tools: summary };
+    const index = await this.reindex(tenantId, spec._id, result.tools);
+    return { spec: specView(spec), version, tools: summary, index };
   }
 
   /**
@@ -109,7 +130,7 @@ export class SpecsService {
     tenantId: Types.ObjectId,
     specId: string,
     input: SpecInput & { overrides?: unknown },
-  ): Promise<{ spec: SpecView; version: SpecVersion; tools: ReconcileSummary }> {
+  ): Promise<VersionResult> {
     const db = this.stores(tenantId);
     const spec = await this.findSpec(db, specId);
     const current = await db.versions.findOne({ specId: spec._id, version: spec.currentVersion });
@@ -141,10 +162,12 @@ export class SpecsService {
       { _id: spec._id },
       { currentVersion: versionNumber, source: loaded.source, updatedAt },
     );
+    const index = await this.reindex(tenantId, spec._id, result.tools);
     return {
       spec: specView({ ...spec, currentVersion: versionNumber, source: loaded.source, updatedAt }),
       version,
       tools: summary,
+      index,
     };
   }
 
@@ -230,6 +253,26 @@ export class SpecsService {
     const compiled = current ? await this.compiled.get(current.compileKey) : undefined;
     if (!compiled) throw new Error(`Spec ${spec._id.toHexString()} has no stored current version.`);
     return compiled;
+  }
+
+  /**
+   * Step 3.1: updates the spec's vectors in the tool index, synchronously for now (a worker takes
+   * this off the request path in Phase 4). Runs after the version is saved, and a failure does not
+   * undo the upload: the version is the source of truth and the index can always be rebuilt from it.
+   */
+  private async reindex(
+    tenantId: Types.ObjectId,
+    specId: Types.ObjectId,
+    tools: ToolDefinition[],
+  ): Promise<IndexResult> {
+    const scope = { tenantId: tenantId.toHexString(), specId: specId.toHexString() };
+    try {
+      return { status: 'indexed', ...(await this.toolIndex.reindex(scope, tools)) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Tool index is stale for spec ${scope.specId}: ${message}`);
+      return { status: 'stale', error: 'Embedding failed; the tool index will be rebuilt on the next upload.' };
+    }
   }
 
   /** Builds this request's tenant-scoped stores. Every tenant-data access goes through them. */

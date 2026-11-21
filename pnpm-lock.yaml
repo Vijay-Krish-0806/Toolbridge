@@ -266,6 +266,9 @@ importers:
       '@toolbridge/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@toolbridge/retrieval':
+        specifier: workspace:*
+        version: link:../../packages/retrieval
       '@toolbridge/spec-compiler':
         specifier: workspace:*
         version: link:../../packages/spec-compiler
@@ -334,6 +337,18 @@ importers:
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0
+
+  packages/retrieval:
+    dependencies:
+      '@toolbridge/spec-compiler':
+        specifier: workspace:*
+        version: link:../spec-compiler
+      mongodb:
+        specifier: 7.8.0
+        version: 7.8.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
 
   packages/shared: {}
 

@@ -1,0 +1,23 @@
+{
+  "name": "@toolbridge/retrieval",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "index:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/index-check.js"
+  },
+  "dependencies": {
+    "@toolbridge/spec-compiler": "workspace:*",
+    "mongodb": "7.8.0",
+    "zod": "4.6.7"
+  }
+}
