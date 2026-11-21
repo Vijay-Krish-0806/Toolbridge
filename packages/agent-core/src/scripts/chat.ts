@@ -9,11 +9,17 @@
  *     tools picked by vector search (Step 3.2; needs MongoDB and the embedding model)
  *   pnpm --filter @toolbridge/agent-core chat --openapi --knowledge "question"  add the
  *     knowledge_search tool over knowledge/host-store and check the answer's citations (Step 3.3)
+ *   pnpm --filter @toolbridge/agent-core chat --openapi --role warehouse "question"  act as that
+ *     role (Step 4.2): specs/host-store.policy.json decides which tools it may use. With
+ *     --openapi the role defaults to support (the host login the agent uses); without --openapi
+ *     there is no policy, because the policy is written for the generated tool names
  *   pnpm --filter @toolbridge/agent-core chat --engine loop "question"  run the raw loop instead of
  *     the LangGraph engine, the default since ADR 0025 (Step 4.1; works with every flag above)
  * Each run is logged as JSON lines to logs/agent.ndjson, tagged with its runId.
  */
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { parseArgs } from 'node:util';
 import {
@@ -22,8 +28,10 @@ import {
   loadEmbeddingConfig,
   VectorToolSelector,
 } from '@toolbridge/retrieval';
+import { createAuthorizer, parsePolicy } from '@toolbridge/policy';
 import type { ToolDefinition as CompiledTool } from '@toolbridge/spec-compiler';
 import { z } from 'zod';
+import type { RunAccess } from '../agent/access.js';
 import { ENGINES, type EngineName, parseEngineName } from '../agent/engines.js';
 import type { AgentEvent, AgentLimits, AgentRunResult } from '../agent/run-types.js';
 import { checkCitations, citationWarning, passageIds } from '../agent/citations.js';
@@ -175,6 +183,8 @@ async function createSession(options: {
   retrieveK: number | undefined;
   knowledge: boolean;
   engine: EngineName;
+  /** Who is chatting (Step 4.2). Set only with the generated tools, which the policy names. */
+  access: RunAccess | undefined;
 }) {
   const { limits, openapi, retrieveK } = options;
   const runEngine = ENGINES[options.engine];
@@ -199,6 +209,8 @@ async function createSession(options: {
     onRetry: (event) => {
       logToolRetry(runLogger, event);
     },
+    // Layer 3: the executor gets its own reference to the rules, so it checks every call itself.
+    ...(options.access && { authorizer: options.access.authorizer }),
   });
   const systemMessage: ChatMessage = {
     role: 'system',
@@ -238,6 +250,7 @@ async function createSession(options: {
           messages: [...history, { role: 'user', content: question }],
           limits,
           ...(selector && { selector }),
+          ...(options.access && { access: options.access }),
           onEvent: (event) => {
             if (event.type === 'tool-end') {
               for (const id of passageIds(event.call, event.result)) retrieved.add(id);
@@ -277,6 +290,18 @@ async function createSession(options: {
   };
 }
 
+/**
+ * Loads the host-store policy and builds the access for one CLI user with `role`. The CLI has no
+ * login, so the user id is a fixed "cli"; a real caller gets both from a verified token (4.4).
+ * An unknown role is not an error here: the policy denies it every tool (deny by default).
+ */
+async function loadHostAccess(role: string): Promise<RunAccess> {
+  const path = resolve(import.meta.dirname, '../../../../specs/host-store.policy.json');
+  const policy = parsePolicy(JSON.parse(await readFile(path, 'utf8')));
+  console.log(`role: ${role} (${path})`);
+  return { principal: { userId: 'cli', role }, authorizer: createAuthorizer(policy) };
+}
+
 /** Reads flags, then runs either one question or an interactive prompt loop. */
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -286,6 +311,7 @@ async function main(): Promise<void> {
       retrieve: { type: 'string' },
       knowledge: { type: 'boolean' },
       engine: { type: 'string' },
+      role: { type: 'string' },
     },
     allowPositionals: true,
   });
@@ -299,12 +325,18 @@ async function main(): Promise<void> {
     throw new Error('--retrieve works with the generated tools: add --openapi.');
   }
   const engine = parseEngineName(values.engine);
+  if (values.role !== undefined && values.openapi !== true) {
+    throw new Error('--role needs the generated tools (the policy names them): add --openapi.');
+  }
+  const access =
+    values.openapi === true ? await loadHostAccess(values.role ?? 'support') : undefined;
   const session = await createSession({
     limits: maxIterations === undefined ? {} : { maxIterations },
     openapi: values.openapi === true,
     retrieveK,
     knowledge: values.knowledge === true,
     engine,
+    access,
   });
   console.log(
     `${String(session.toolCount)} tools (${values.openapi === true ? 'generated from the spec' : 'hand-written'}), engine: ${engine}`,

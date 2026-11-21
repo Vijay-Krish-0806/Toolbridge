@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Principal, ToolAuthorizer } from '../agent/access.js';
 import type { ToolCall } from '../llm/types.js';
 import {
   ToolCancelledError,
@@ -35,6 +36,20 @@ export interface ToolExecutorOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Longest result (in characters) sent to the model; longer results are cut with a note. */
   maxResultChars?: number;
+  /**
+   * Step 4.2: when set, every call is checked against it before anything else happens, and a
+   * call without a principal is refused (fail closed). This is the last line of defense: it
+   * holds even if the agent offered a forbidden tool by mistake, or a caller skips the agent.
+   */
+  authorizer?: ToolAuthorizer;
+}
+
+/** Per-call options for `ToolExecutor.run`. */
+export interface RunOptions {
+  /** Lets the caller cancel the call. */
+  signal?: AbortSignal;
+  /** Who is asking. Required when the executor has an authorizer. */
+  principal?: Principal;
 }
 
 /** Runs tool calls from the model safely: validate, run with a timeout, retry reads, normalize errors. */
@@ -45,6 +60,7 @@ export class ToolExecutor {
   private readonly onRetry: ((event: RetryEvent) => void) | undefined;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly maxResultChars: number;
+  private readonly authorizer: ToolAuthorizer | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -57,17 +73,24 @@ export class ToolExecutor {
     this.onRetry = options.onRetry;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.maxResultChars = options.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
+    this.authorizer = options.authorizer;
   }
 
   /**
    * Runs one tool call and always returns a ToolResult. Steps:
-   * 1. find the tool by name, 2. parse the arguments JSON, 3. validate with the tool's Zod schema,
-   * 4. execute with a timeout, retrying retryable failures of read tools with backoff.
+   * 1. check access (when an authorizer is set), 2. find the tool by name, 3. parse the arguments
+   * JSON, 4. validate with the tool's Zod schema, 5. execute with a timeout, retrying retryable
+   * failures of read tools with backoff.
+   * Access comes first, so a forbidden call learns nothing (not even whether its arguments were
+   * valid) and an unknown name is refused the same way as a forbidden one.
    * `signal` lets the caller cancel (for example an MCP client cancelling a request): the running
    * attempt is aborted, the result is a 'cancelled' error, and nothing is retried.
    */
-  async run(call: ToolCall, options: { signal?: AbortSignal } = {}): Promise<ToolResult> {
+  async run(call: ToolCall, options: RunOptions = {}): Promise<ToolResult> {
     const { signal } = options;
+    const denied = this.checkAccess(call.name, options.principal);
+    if (denied) return denied;
+
     const tool = this.registry.get(call.name);
     if (!tool) {
       return fail(
@@ -115,6 +138,21 @@ export class ToolExecutor {
         await this.sleep(delayMs);
       }
     }
+  }
+
+  /**
+   * The access check. Returns a `forbidden` result to send back, or undefined when the call may
+   * go ahead. No authorizer means access control is off (tests, local scripts).
+   * Before -> after: (warehouse, 'refunds_request') ->
+   * `{ ok: false, error: { code: 'forbidden', message: 'Role "warehouse" is not allowed ...' } }`.
+   */
+  private checkAccess(toolName: string, principal: Principal | undefined): ToolResult | undefined {
+    if (!this.authorizer) return undefined;
+    if (!principal) {
+      return fail('forbidden', 'No user identity was given for this call, so it was refused.');
+    }
+    const decision = this.authorizer.authorize(principal, toolName);
+    return decision.allowed ? undefined : fail('forbidden', decision.reason);
   }
 }
 

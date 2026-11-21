@@ -27,7 +27,13 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const emit = input.onEvent ?? (() => undefined);
   const messages = [...input.messages];
-  const tools = await selectToolMenu(input.registry, input.selector, messages, emit);
+  const tools = await selectToolMenu(
+    input.registry,
+    input.selector,
+    messages,
+    emit,
+    input.access,
+  );
   const offered = new Set(tools.map((tool) => tool.name));
   let usage = emptyUsage();
   let consecutiveErrors = 0;
@@ -53,7 +59,14 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
       return finish(answerStopReason(result), result.message.content);
     }
 
-    const results = await runToolCalls(calls, offered, input.registry, input.executor, emit);
+    const results = await runToolCalls(
+      calls,
+      offered,
+      input.registry,
+      input.executor,
+      emit,
+      input.access?.principal,
+    );
     usage = addUsage(usage, { ...emptyUsage(), toolCalls: calls.length });
     const turn = toolResultMessages(calls, results, consecutiveErrors);
     messages.push(...turn.messages);

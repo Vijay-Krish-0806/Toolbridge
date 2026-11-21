@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "roles": {
+    "owner": {
+      "allow": ["*"]
+    },
+    "support": {
+      "allow": [
+        "orders_*",
+        "customers_*",
+        "refunds_list",
+        "refunds_get_by_id",
+        "refunds_request",
+        "products_list",
+        "products_get",
+        "inventory_list",
+        "inventory_for_product",
+        "shipments_list",
+        "shipments_get",
+        "coupons_list",
+        "coupons_get_by_code",
+        "forms_order_form",
+        "knowledge_search"
+      ]
+    },
+    "warehouse": {
+      "allow": [
+        "orders_list",
+        "orders_get",
+        "orders_delayed",
+        "products_list",
+        "products_get",
+        "inventory_*",
+        "shipments_*",
+        "knowledge_search"
+      ]
+    }
+  }
+}

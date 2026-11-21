@@ -61,8 +61,14 @@ export async function selectTools(
   state: AgentStateValue,
   config: NodeConfig,
 ): Promise<AgentStateUpdate> {
-  const { registry, selector } = contextOf(config);
-  const tools = await selectToolMenu(registry, selector, state.messages, emitterOf(config));
+  const { registry, selector, access } = contextOf(config);
+  const tools = await selectToolMenu(
+    registry,
+    selector,
+    state.messages,
+    emitterOf(config),
+    access,
+  );
   return { tools };
 }
 
@@ -107,12 +113,19 @@ export async function executeTools(
   state: AgentStateValue,
   config: NodeConfig,
 ): Promise<AgentStateUpdate> {
-  const { registry, executor, limits } = contextOf(config);
+  const { registry, executor, limits, access } = contextOf(config);
   const last = state.messages.at(-1);
   const calls = last?.role === 'assistant' ? last.toolCalls : [];
   const offered = new Set(state.tools.map((tool) => tool.name));
 
-  const results = await runToolCalls(calls, offered, registry, executor, emitterOf(config));
+  const results = await runToolCalls(
+    calls,
+    offered,
+    registry,
+    executor,
+    emitterOf(config),
+    access?.principal,
+  );
   const turn = toolResultMessages(calls, results, state.consecutiveErrors);
 
   const update: AgentStateUpdate = {

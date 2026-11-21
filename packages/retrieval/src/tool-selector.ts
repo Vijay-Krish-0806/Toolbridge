@@ -53,13 +53,21 @@ export class VectorToolSelector {
 
   /**
    * Selects tools for one request text. One search for `kFallback` results covers both cases.
+   * With `allowed` (Step 4.2), the search sees only those tools, and core tools outside it are
+   * dropped, so every name returned is one the person may use.
    * Before -> after: `'is ORD-1042 shipped yet?'` (k 5, core ['orders_get']) ->
    * `{ names: ['shipments_get', 'orders_get', ...5 total], mode: 'top_k', topScore: 0.87 }`
    * (scores illustrative).
    */
-  async select(query: string): Promise<VectorToolSelection> {
-    const matches = await this.index.search(this.scope, query, this.options.kFallback);
-    return selectFromMatches(matches, this.options);
+  async select(query: string, options: { allowed?: string[] } = {}): Promise<VectorToolSelection> {
+    const { allowed } = options;
+    const scope = allowed ? { ...this.scope, toolNames: allowed } : this.scope;
+    const matches = await this.index.search(scope, query, this.options.kFallback);
+    // A core tool the person may not use is not offered either.
+    const core = allowed
+      ? this.options.core.filter((name) => allowed.includes(name))
+      : this.options.core;
+    return selectFromMatches(matches, { ...this.options, core });
   }
 }
 

@@ -306,6 +306,9 @@ importers:
       '@langchain/langgraph':
         specifier: 1.7.5
         version: 1.7.5(@langchain/core@1.4.1(openai@7.57.0(zod@4.6.7)))(zod@4.6.7)
+      '@toolbridge/policy':
+        specifier: workspace:*
+        version: link:../policy
       '@toolbridge/retrieval':
         specifier: workspace:*
         version: link:../retrieval
@@ -346,6 +349,12 @@ importers:
       '@modelcontextprotocol/client':
         specifier: 2.4.0
         version: 2.4.0
+
+  packages/policy:
+    dependencies:
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
 
   packages/retrieval:
     dependencies:

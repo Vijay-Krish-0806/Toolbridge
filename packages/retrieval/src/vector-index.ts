@@ -24,7 +24,23 @@ interface ListedSearchIndex {
   /** For example PENDING, BUILDING, READY, FAILED, DELETING, DOES_NOT_EXIST. */
   status?: string;
   queryable?: boolean;
-  latestDefinition?: { fields?: { type?: string; numDimensions?: number }[] };
+  latestDefinition?: {
+    /** Vector search indexes: the vector field and the filter fields. */
+    fields?: { type?: string; path?: string; numDimensions?: number }[];
+    /** Atlas Search (keyword) indexes: field name -> mapping. */
+    mappings?: { fields?: Record<string, unknown> };
+  };
+}
+
+/** One search index, described once: how to create it, update it, and check a listed one. */
+interface IndexPlan {
+  name: string;
+  type: 'vectorSearch' | 'search';
+  definition: Document;
+  /** Throws when a listed index can never be used (for example, the wrong vector size). */
+  check: (index: ListedSearchIndex) => void;
+  /** True when the listed index already has every field this definition needs. */
+  isCurrent: (index: ListedSearchIndex) => boolean;
 }
 
 /** Statuses of an index that is going away, not one we can use. */
@@ -44,7 +60,8 @@ export function numCandidates(k: number): number {
 /**
  * Creates the vector search index if it is missing, then waits until it can be queried (about a
  * second on Atlas Local). An existing index built for a different vector size is an error: it
- * cannot hold this provider's vectors.
+ * cannot hold this provider's vectors. An existing index that lacks a filter field (an index from
+ * before Step 4.2 added `toolName`) is replaced.
  * Before -> after: a collection with no search index -> the same collection with a queryable
  * `spec.name` index (vector field `vector`, cosine, `provider.dimensions` long).
  */
@@ -56,10 +73,17 @@ export async function ensureVectorIndex<T extends Document>(
 ): Promise<void> {
   await ensureSearchIndex(
     collection,
-    spec.name,
-    () => createVectorIndex(collection, spec, provider),
-    (index) => {
-      checkDimensions(index, spec, provider);
+    {
+      name: spec.name,
+      type: 'vectorSearch',
+      definition: vectorIndexDefinition(spec, provider),
+      check: (index) => {
+        checkDimensions(index, spec, provider);
+      },
+      isCurrent: (index) => {
+        const paths = new Set(index.latestDefinition?.fields?.map((f) => f.path));
+        return spec.filterPaths.every((path) => paths.has(path));
+      },
     },
     timeoutMs,
   );
@@ -82,45 +106,58 @@ export async function ensureTextIndex<T extends Document>(
   for (const path of spec.filterPaths) fields[path] = { type: 'token' };
   await ensureSearchIndex(
     collection,
-    spec.name,
-    async () => {
-      await collection.createSearchIndex({
-        name: spec.name,
-        type: 'search',
-        definition: { mappings: { dynamic: false, fields } },
-      });
+    {
+      name: spec.name,
+      type: 'search',
+      definition: { mappings: { dynamic: false, fields } },
+      check: () => undefined,
+      isCurrent: (index) => {
+        const listed = index.latestDefinition?.mappings?.fields ?? {};
+        return Object.keys(fields).every((path) => path in listed);
+      },
     },
-    () => undefined,
     timeoutMs,
   );
 }
 
 /**
- * The polling loop both index kinds share: create the index once if it is missing, fail on FAILED,
- * and return when it is queryable.
- * Right after its collection is dropped, the old index is still listed for a moment with status
- * DOES_NOT_EXIST (seen on Atlas Local 8.0). That entry counts as missing: wait for it to go away,
- * then create the new index. Treating it as existing would wait forever for an index that is gone.
+ * The polling loop both index kinds share: create the index once if it is missing, replace it
+ * once if it lacks a field, fail on FAILED, and return when it is queryable.
+ * Right after a drop, the old index is still listed for a moment with status DOES_NOT_EXIST or
+ * DELETING (seen on Atlas Local 8.0). That entry counts as missing: wait for it to go away, then
+ * create the new index. Treating it as existing would wait forever for an index that is gone.
+ * Why drop and recreate, not `updateSearchIndex`: the docs describe in-place updates, but on
+ * Atlas Local 8.0.34 updating a vector index failed with `"mappings" is required` (measured in
+ * Step 4.2). A replace means search is down for a few seconds, once, while `ensureIndexes` runs
+ * at startup and before any request is served.
  */
 async function ensureSearchIndex<T extends Document>(
   collection: Collection<T>,
-  name: string,
-  create: () => Promise<void>,
-  check: (index: ListedSearchIndex) => void,
+  plan: IndexPlan,
   timeoutMs: number,
 ): Promise<void> {
+  const { name } = plan;
   const deadline = Date.now() + timeoutMs;
   let created = false;
+  let dropped = false;
   for (;;) {
     const [index] = (await collection.listSearchIndexes(name).toArray()) as ListedSearchIndex[];
     if (index === undefined) {
-      if (!created) await create();
+      if (!created) {
+        await collection.createSearchIndex({ name, type: plan.type, definition: plan.definition });
+      }
       created = true;
     } else if (index.status === 'FAILED') {
       throw new Error(`Search index ${name} failed to build.`);
     } else if (!LEFTOVER_STATUSES.has(index.status ?? '')) {
-      check(index);
-      if (index.queryable === true) return;
+      plan.check(index);
+      if (!plan.isCurrent(index)) {
+        // An old definition (for example, without the Step 4.2 `toolName` filter): replace it.
+        if (!dropped) await collection.dropSearchIndex(name);
+        dropped = true;
+      } else if (index.queryable === true) {
+        return;
+      }
     }
     if (Date.now() > deadline) {
       throw new Error(
@@ -150,28 +187,20 @@ export async function waitFor(
   }
 }
 
-/** Starts building the vector search index (asynchronous on the server). */
-async function createVectorIndex<T extends Document>(
-  collection: Collection<T>,
-  spec: VectorIndexSpec,
-  provider: EmbeddingProvider,
-): Promise<void> {
-  await collection.createSearchIndex({
-    name: spec.name,
-    type: 'vectorSearch',
-    definition: {
-      fields: [
-        // The vectors are unit length (measured), so cosine and dotProduct rank the same.
-        {
-          type: 'vector',
-          path: 'vector',
-          numDimensions: provider.dimensions,
-          similarity: 'cosine',
-        },
-        ...spec.filterPaths.map((path) => ({ type: 'filter', path })),
-      ],
-    },
-  });
+/** The vector index definition: one vector field plus the filter fields. */
+function vectorIndexDefinition(spec: VectorIndexSpec, provider: EmbeddingProvider): Document {
+  return {
+    fields: [
+      // The vectors are unit length (measured), so cosine and dotProduct rank the same.
+      {
+        type: 'vector',
+        path: 'vector',
+        numDimensions: provider.dimensions,
+        similarity: 'cosine',
+      },
+      ...spec.filterPaths.map((path) => ({ type: 'filter', path })),
+    ],
+  };
 }
 
 /** Throws when the index was built for a different vector size than this provider's. */

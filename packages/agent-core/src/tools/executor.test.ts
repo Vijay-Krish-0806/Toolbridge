@@ -133,3 +133,71 @@ describe('ToolExecutor', () => {
     expect(truncateResult('{"ok":true}', 20)).toBe('{"ok":true}');
   });
 });
+
+/**
+ * Step 4.2: the executor is the last line of defense, so these cases call it directly, the way
+ * a buggy agent or another caller (MCP server, platform API) would: no menu, no selector.
+ */
+describe('ToolExecutor with an authorizer', () => {
+  const authorizer = {
+    authorize: (principal: { role: string }, toolName: string) =>
+      principal.role === 'owner' || toolName === 'get_thing'
+        ? ({ allowed: true } as const)
+        : ({
+            allowed: false,
+            reason: `Role "${principal.role}" may not use "${toolName}".`,
+          } as const),
+  };
+
+  /** An executor with the authorizer over one read and one write tool that count their runs. */
+  function guarded() {
+    const read = flakyTool('get_thing', 'read', 0, serverError);
+    const write = flakyTool('refund_thing', 'write', 0, serverError);
+    const executor = new ToolExecutor(new ToolRegistry([read.tool, write.tool]), { authorizer });
+    return { executor, read, write };
+  }
+
+  it('blocks a forbidden call before it runs, even with valid arguments', async () => {
+    const { executor, write } = guarded();
+    const result = await executor.run(call('refund_thing', '{"id":"a"}'), {
+      principal: { userId: 'u1', role: 'warehouse' },
+    });
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'forbidden',
+        message: 'Role "warehouse" may not use "refund_thing".',
+        retryable: false,
+      },
+    });
+    expect(write.calls()).toBe(0);
+  });
+
+  it('fails closed: no principal means no call at all', async () => {
+    const { executor, read } = guarded();
+    const result = await executor.run(call('get_thing', '{"id":"a"}'));
+    expect(result).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(read.calls()).toBe(0);
+  });
+
+  it('refuses a forbidden call before checking its arguments or name', async () => {
+    const { executor } = guarded();
+    const principal = { userId: 'u1', role: 'warehouse' };
+    // Bad JSON and an unknown name are answered as forbidden: nothing is revealed about them.
+    for (const c of [call('refund_thing', 'not json'), call('no_such_tool', '{}')]) {
+      expect(await executor.run(c, { principal })).toMatchObject({
+        ok: false,
+        error: { code: 'forbidden' },
+      });
+    }
+  });
+
+  it('runs an allowed call normally', async () => {
+    const { executor, write } = guarded();
+    const result = await executor.run(call('refund_thing', '{"id":"a"}'), {
+      principal: { userId: 'u1', role: 'owner' },
+    });
+    expect(result.ok).toBe(true);
+    expect(write.calls()).toBe(1);
+  });
+});

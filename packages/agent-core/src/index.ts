@@ -10,6 +10,7 @@ export {
   ToolExecutor,
   type ToolResult,
   type ToolExecutorOptions,
+  type RunOptions,
   type RetryEvent,
 } from './tools/executor.js';
 export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/errors.js';
@@ -32,7 +33,13 @@ export type {
   StopReason,
 } from './agent/run-types.js';
 export { STORE_AGENT_SYSTEM_PROMPT } from './agent/system-prompt.js';
-export type { ToolSelection, ToolSelector } from './agent/tool-selector.js';
+export type { SelectOptions, ToolSelection, ToolSelector } from './agent/tool-selector.js';
+export type {
+  AccessDecision,
+  Principal,
+  RunAccess,
+  ToolAuthorizer,
+} from './agent/access.js';
 export { createOpenApiTools, type OpenApiToolsOptions } from './openapi/generated-tools.js';
 export {
   applyAuth,

@@ -21,11 +21,13 @@
     "bench:context": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/bench-context.js",
     "knowledge:eval": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/knowledge-eval.js",
     "engines:compare": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/compare-engines.js",
-    "openapi:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/openapi-check.js"
+    "openapi:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/openapi-check.js",
+    "policy:check": "tsc -p tsconfig.build.json && node dist/scripts/policy-check.js"
   },
   "dependencies": {
     "@langchain/core": "1.4.1",
     "@langchain/langgraph": "1.7.5",
+    "@toolbridge/policy": "workspace:*",
     "@toolbridge/retrieval": "workspace:*",
     "@toolbridge/shared": "workspace:*",
     "@toolbridge/spec-compiler": "workspace:*",

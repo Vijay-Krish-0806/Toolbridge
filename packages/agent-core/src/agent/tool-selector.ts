@@ -12,11 +12,21 @@ export interface ToolSelection {
   topScore?: number;
 }
 
+/** Limits on a selection. */
+export interface SelectOptions {
+  /**
+   * Step 4.2: pick only from these tool names (the ones the person may use). The selector should
+   * apply it inside the search, so a menu of k tools is k ALLOWED tools. The agent filters the
+   * result again anyway, so a selector that ignores it cannot widen access.
+   */
+  allowed?: string[];
+}
+
 export interface ToolSelector {
   /**
    * Picks tools for one request text.
    * Before -> after: `'refund the damaged order ORD-7'` ->
    * `{ names: ['refunds_request', 'orders_get', ...], mode: 'top_k', topScore: 0.9 }`.
    */
-  select(query: string): Promise<ToolSelection>;
+  select(query: string, options?: SelectOptions): Promise<ToolSelection>;
 }

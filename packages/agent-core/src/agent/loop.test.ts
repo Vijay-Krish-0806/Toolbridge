@@ -152,6 +152,47 @@ describe.each(engines)('%s', (_name, run) => {
     expect(await run(input)).toMatchObject({ answer: 'done', stopReason: 'length' });
   });
 
+  it('with access control, hides forbidden tools and blocks a forced call (Step 4.2)', async () => {
+    const lookup = countingTool('orders_get');
+    const cancel = countingTool('orders_cancel');
+    const registry = new ToolRegistry([lookup.tool, cancel.tool]);
+    const allowedSeen: (string[] | undefined)[] = [];
+    const selector: ToolSelector = {
+      // A selector with a bug: it ignores `allowed` and returns the forbidden tool anyway.
+      select: (_query, options) => {
+        allowedSeen.push(options?.allowed);
+        return Promise.resolve({ names: ['orders_get', 'orders_cancel'], mode: 'top_k' });
+      },
+    };
+    // The model is "forced": it calls the forbidden tool even though it was never offered.
+    const llm = new FakeProvider([callTool('orders_cancel'), answer]);
+    const authorizer = {
+      authorize: (_principal: { role: string }, toolName: string) =>
+        toolName === 'orders_cancel'
+          ? ({ allowed: false, reason: 'no' } as const)
+          : ({ allowed: true } as const),
+    };
+
+    const result = await run({
+      llm,
+      registry,
+      // The executor has its own copy of the rules (layer 3), independent of the run's.
+      executor: new ToolExecutor(registry, { authorizer }),
+      messages: [{ role: 'user', content: 'cancel ORD-1' }],
+      selector,
+      access: { principal: { userId: 'u1', role: 'warehouse' }, authorizer },
+    });
+
+    expect(allowedSeen).toEqual([['orders_get']]);
+    for (const request of llm.requests) {
+      expect(request.tools?.map((t) => t.name)).toEqual(['orders_get']);
+    }
+    expect(cancel.runs()).toBe(0);
+    expect(result.messages.find((m) => m.role === 'tool')?.content).toMatch(
+      /not available for this request/,
+    );
+  });
+
   it('streams the same progress events, in order, as the raw loop', async () => {
     /** The event types one engine emits for a tool call followed by an answer. */
     const eventTypes = async (engine: typeof run) => {

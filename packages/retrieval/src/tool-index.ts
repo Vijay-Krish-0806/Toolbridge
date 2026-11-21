@@ -28,6 +28,11 @@ import {
 export interface IndexScope {
   tenantId: string;
   specId: string;
+  /**
+   * Step 4.2: search only these tools (the ones the person may use). Applied inside the search as
+   * a pre-filter, like the tenant, so k results are k allowed tools. Missing means every tool.
+   */
+  toolNames?: string[];
 }
 
 interface ToolVector {
@@ -77,12 +82,12 @@ const FUSION_DEPTH = 20;
 
 const VECTOR_INDEX: VectorIndexSpec = {
   name: 'tool_vectors_vector',
-  filterPaths: ['tenantId', 'specId'],
+  filterPaths: ['tenantId', 'specId', 'toolName'],
 };
 const TEXT_INDEX = {
   name: 'tool_vectors_text',
   textPaths: ['text'],
-  filterPaths: ['tenantId', 'specId'],
+  filterPaths: ['tenantId', 'specId', 'toolName'],
 };
 
 export class ToolIndex {
@@ -215,7 +220,11 @@ export class ToolIndex {
             queryVector,
             numCandidates: numCandidates(k),
             limit: k,
-            filter: { tenantId: scope.tenantId, specId: scope.specId },
+            filter: {
+              tenantId: scope.tenantId,
+              specId: scope.specId,
+              ...(scope.toolNames && { toolName: { $in: scope.toolNames } }),
+            },
           },
         },
         { $project: { _id: 0, toolName: 1, text: 1, score: { $meta: 'vectorSearchScore' } } },
@@ -239,6 +248,7 @@ export class ToolIndex {
               filter: [
                 { equals: { path: 'tenantId', value: scope.tenantId } },
                 { equals: { path: 'specId', value: scope.specId } },
+                ...(scope.toolNames ? [{ in: { path: 'toolName', value: scope.toolNames } }] : []),
               ],
             },
           },

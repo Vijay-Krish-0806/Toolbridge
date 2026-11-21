@@ -13,27 +13,40 @@ import type {
 } from '../llm/types.js';
 import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
+import type { Principal, RunAccess } from './access.js';
 import type { EmitEvent } from './run-types.js';
 import type { ToolSelector } from './tool-selector.js';
 
 /**
- * The tool menu for this run. With a selector, it selects once, from the latest user message,
- * and keeps that menu for the whole run: changing the menu between steps would hide a tool the
- * model planned to call next. Names the registry does not know are dropped.
- * Before -> after: 35 registered tools, selector picks 6 -> those 6 definitions, in registry order.
+ * The tool menu for this run. Two filters, in order:
+ * 1. ACCESS (Step 4.2, defense layer 1): with `access`, only tools the person may use. The model
+ *    never sees a forbidden tool, so it cannot plan with one.
+ * 2. RELEVANCE (Step 3.2): with a selector, the tools that best fit the latest user message,
+ *    chosen from the allowed ones only.
+ * The menu is chosen once and kept for the whole run: changing it between steps would hide a
+ * tool the model planned to call next. Names the registry does not know are dropped.
+ * Before -> after: 35 registered tools, role allows 13, selector picks 6 of those -> those 6
+ * definitions, in registry order.
  */
 export async function selectToolMenu(
   registry: ToolRegistry,
   selector: ToolSelector | undefined,
   messages: ChatMessage[],
   emit: EmitEvent,
+  access?: RunAccess,
 ): Promise<ToolDefinition[]> {
-  const all = registry.definitions();
-  if (!selector) return all;
+  const allowed = registry
+    .definitions()
+    .filter((tool) => !access || access.authorizer.authorize(access.principal, tool.name).allowed);
+  if (!selector) return allowed;
   const query = messages.findLast((m) => m.role === 'user')?.content ?? '';
-  const selection = await selector.select(query);
+  const selection = await selector.select(
+    query,
+    access ? { allowed: allowed.map((tool) => tool.name) } : {},
+  );
   const picked = new Set(selection.names);
-  const tools = all.filter((tool) => picked.has(tool.name));
+  // Filtering `allowed` (not every tool) means a selector bug cannot add a forbidden tool.
+  const tools = allowed.filter((tool) => picked.has(tool.name));
   emit({ type: 'tools-selected', selection, offered: tools.map((tool) => tool.name) });
   return tools;
 }
@@ -59,7 +72,8 @@ export async function streamModelTurn(
  * Runs one turn's tool calls and returns their results in the same order as `calls`.
  * Calls from one turn are independent (the model wrote them all before seeing any result), so
  * reads run in parallel. If any call is a write, the batch runs one at a time, in order, so a
- * write never races another call. A call to a tool outside `offered` is refused, never run.
+ * write never races another call. A call to a tool outside `offered` is refused, never run
+ * (defense layer 2: the menu is the boundary for this run).
  */
 export async function runToolCalls(
   calls: ToolCall[],
@@ -67,12 +81,16 @@ export async function runToolCalls(
   registry: ToolRegistry,
   executor: ToolExecutor,
   emit: EmitEvent,
+  principal?: Principal,
 ): Promise<ToolResult[]> {
   /** Runs one call, emitting start and end events around it. */
   const runOne = async (call: ToolCall): Promise<ToolResult> => {
     emit({ type: 'tool-start', call });
     const started = performance.now();
-    const result = offered.has(call.name) ? await executor.run(call) : notOffered(call, offered);
+    // The principal travels with the call, so the executor can check access itself (layer 3).
+    const result = offered.has(call.name)
+      ? await executor.run(call, principal ? { principal } : {})
+      : notOffered(call, offered);
     emit({ type: 'tool-end', call, result, durationMs: performance.now() - started });
     return result;
   };

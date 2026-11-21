@@ -40,6 +40,7 @@ export async function runAgentGraph(input: AgentRunInput): Promise<AgentRunResul
         executor: input.executor,
         selector: input.selector,
         limits,
+        access: input.access,
       },
       streamMode: ['custom', 'values'],
       recursionLimit: limits.maxIterations * 2 + 4,

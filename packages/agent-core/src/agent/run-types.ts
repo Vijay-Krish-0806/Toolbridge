@@ -7,6 +7,7 @@ import type { LLMProvider } from '../llm/provider.js';
 import type { ChatMessage, GenerateResult, ToolCall, Usage } from '../llm/types.js';
 import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
+import type { RunAccess } from './access.js';
 import type { ToolSelection, ToolSelector } from './tool-selector.js';
 
 export interface AgentLimits {
@@ -62,6 +63,12 @@ export interface AgentRunInput {
    * every registered tool. Without it, the whole registry is offered (the earlier behavior).
    */
   selector?: ToolSelector;
+  /**
+   * Step 4.2: who is asking and the rules for them. With it, the model is offered only tools the
+   * person may use, and each call carries the person to the executor, which checks again.
+   * Without it, there is no access control in the agent (tests and local scripts).
+   */
+  access?: RunAccess;
 }
 
 export interface AgentRunResult {

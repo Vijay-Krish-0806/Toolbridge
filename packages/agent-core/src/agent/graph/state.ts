@@ -9,6 +9,9 @@
  * CONTEXT is the run's dependencies: the model client, the tool registry, the executor. They are
  * not data about the run, must never be saved in a checkpoint, and differ per tenant. LangGraph
  * passes them to every node as `config.context`, so one compiled graph can serve every run.
+ * The person's identity (Step 4.2) is context too, for a security reason: nodes can write state,
+ * but context is read-only for the whole run, so no node (and nothing the model says) can change
+ * who is asking or which rules apply.
  *
  * How merging works: each field has a CHANNEL. A plain zod field is a "last value" channel: a new
  * value replaces the old one. A `ReducedValue` field has a REDUCER, a function
@@ -21,6 +24,7 @@ import type { LLMProvider } from '../../llm/provider.js';
 import type { ChatMessage, ToolDefinition } from '../../llm/types.js';
 import type { ToolExecutor } from '../../tools/executor.js';
 import type { ToolRegistry } from '../../tools/registry.js';
+import type { RunAccess } from '../access.js';
 import { type AgentLimits, type AgentUsage, addUsage, emptyUsage } from '../run-types.js';
 import type { ToolSelector } from '../tool-selector.js';
 
@@ -80,6 +84,8 @@ export const AgentContext = z.object({
   executor: z.custom<ToolExecutor>(),
   selector: z.custom<ToolSelector>().optional(),
   limits: z.custom<AgentLimits>(),
+  /** Who is asking and the rules for them (Step 4.2). Missing means no access control. */
+  access: z.custom<RunAccess>().optional(),
 });
 
 export type AgentContextValue = z.infer<typeof AgentContext>;
