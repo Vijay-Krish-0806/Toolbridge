@@ -11,6 +11,7 @@ import { isValidObjectId, type Model, Types } from 'mongoose';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type Approval, type ApprovalStatus, MODEL } from '../domain/models.js';
+import type { SessionCaller } from '../sessions/sessions.service.js';
 import { RunsService } from './runs.service.js';
 
 /** What callers see about an approval card. */
@@ -28,7 +29,7 @@ export interface ApprovalView {
   createdAt: Date;
 }
 
-/** A decision as the API receives it. `approverId` is caller-supplied until Step 4.4b. */
+/** A decision: the approver (the session's user) and an optional reason. */
 export interface DecisionInput {
   approverId: string;
   reason?: string;
@@ -48,14 +49,25 @@ export class ApprovalsService {
     private readonly runs: RunsService,
   ) {}
 
-  /** The tenant's cards, oldest first, optionally only one status (the inbox uses `pending`). */
-  async list(tenantId: Types.ObjectId, status?: ApprovalStatus): Promise<ApprovalView[]> {
-    const cards = await this.scoped(tenantId).find(status ? { status } : {}, { createdAt: 1 });
+  /**
+   * The cards of one spec of the tenant (the spec the approver's session is for), oldest first,
+   * optionally only one status (the inbox uses `pending`).
+   */
+  async list(
+    tenantId: Types.ObjectId,
+    specId: string,
+    status?: ApprovalStatus,
+  ): Promise<ApprovalView[]> {
+    const cards = await this.scoped(tenantId).find(
+      { specId: new Types.ObjectId(specId), ...(status && { status }) },
+      { createdAt: 1 },
+    );
     return cards.map(view);
   }
 
   /**
-   * Decides a card and resumes its run in the background.
+   * Decides a card and resumes its run in the background. The approver is the session's user
+   * (Step 4.4b), so "approver != requester" compares two host user ids from verified tokens.
    * Before -> after: (card for "refunds_request 32893", approve by u2) ->
    * `{ approval: { status: 'approved', approverId: 'u2', ... }, runStatus: 'running' }`.
    * Refused with 403 when the approver requested a high-risk turn themselves; 409 when the card is
@@ -63,12 +75,21 @@ export class ApprovalsService {
    * request is allowed: withdrawing a write is always safe.
    */
   async decide(
-    tenantId: Types.ObjectId,
+    session: SessionCaller,
     approvalId: string,
     decision: 'approved' | 'rejected',
-    input: DecisionInput,
+    reason?: string,
   ): Promise<{ approval: ApprovalView; runStatus: 'running' }> {
+    const { tenantId } = session;
+    const input: DecisionInput = {
+      approverId: session.userId,
+      ...(reason !== undefined && { reason }),
+    };
     const card = await this.require(tenantId, approvalId);
+    // A session is for one spec: a card of another spec is "not found" for it.
+    if (card.specId.toHexString() !== session.specId) {
+      throw new NotFoundException('Approval not found.');
+    }
     if (card.status !== 'pending') throw new ConflictException('This approval is already decided.');
     if (decision === 'approved' && card.level === 'high' && input.approverId === card.requesterId) {
       throw new ForbiddenException(

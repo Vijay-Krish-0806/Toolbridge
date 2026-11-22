@@ -88,9 +88,9 @@ export class RunsService {
     return { runId, status: 'running' };
   }
 
-  /** One run of the tenant, or 404 (also when it belongs to another tenant). */
-  async get(tenantId: Types.ObjectId, runId: string): Promise<RunView> {
-    return view(await this.require(tenantId, runId));
+  /** One run of `userId` in the tenant, or 404 (also another user's or another tenant's run). */
+  async get(tenantId: Types.ObjectId, runId: string, userId: string): Promise<RunView> {
+    return view(await this.require(tenantId, runId, userId));
   }
 
   /**
@@ -144,8 +144,8 @@ export class RunsService {
    *   marks the run cancelled (a queued leg sees the flag when it starts).
    * - Already ended: 409.
    */
-  async cancel(tenantId: Types.ObjectId, runId: string): Promise<RunView> {
-    const run = await this.require(tenantId, runId);
+  async cancel(tenantId: Types.ObjectId, runId: string, userId: string): Promise<RunView> {
+    const run = await this.require(tenantId, runId, userId);
     const now = new Date();
     if (run.status === 'waiting_for_approval') {
       const cancelled = await this.runs(tenantId).findOneAndUpdate(
@@ -174,8 +174,15 @@ export class RunsService {
   }
 
   /** The tenant's run, or 404. */
-  private async require(tenantId: Types.ObjectId, runId: string): Promise<Run> {
-    const run = await this.runs(tenantId).findOne({ _id: runId });
+  /**
+   * The tenant's run, or 404. With `userId`, only that user's run: a host user sees their own
+   * runs, never a colleague's (the same 404 whether it exists or not).
+   */
+  private async require(tenantId: Types.ObjectId, runId: string, userId?: string): Promise<Run> {
+    const run = await this.runs(tenantId).findOne({
+      _id: runId,
+      ...(userId !== undefined && { 'principal.userId': userId }),
+    });
     if (!run) throw new NotFoundException('Run not found.');
     return run;
   }

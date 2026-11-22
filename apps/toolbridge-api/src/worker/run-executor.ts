@@ -123,7 +123,7 @@ export class RunExecutor {
       // Already paused on another card, or already finished: an earlier attempt got this far.
       outcome = state;
     }
-    await this.record(run.tenantId, run._id, outcome, sink);
+    await this.record(run, outcome, sink);
   }
 
   /**
@@ -153,12 +153,8 @@ export class RunExecutor {
    * graph's approval node must stay side-effect free). A retried leg that sees the same pause
    * reuses the open card instead of creating a second one.
    */
-  private async record(
-    tenantId: Types.ObjectId,
-    runId: string,
-    outcome: AgentRunOutcome,
-    sink: EventSink,
-  ): Promise<void> {
+  private async record(run: Run, outcome: AgentRunOutcome, sink: EventSink): Promise<void> {
+    const { tenantId, _id: runId } = run;
     const now = new Date();
     if (outcome.status === 'waiting_for_approval') {
       const { level, requesterId, calls } = outcome.request;
@@ -167,6 +163,7 @@ export class RunExecutor {
         open ??
         (await this.approvals(tenantId).insertOne({
           runId,
+          specId: run.specId,
           status: 'pending',
           level,
           requesterId,

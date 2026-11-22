@@ -13,15 +13,21 @@ import {
   Res,
 } from '@nestjs/common';
 
-import { CurrentCaller, type Caller } from '../auth/auth.decorators.js';
+import { CurrentSession, SessionOnly } from '../auth/auth.decorators.js';
 import { EventLog } from '../events/event-log.js';
 import { resumePoint, streamRunEvents } from '../events/event-stream.js';
+import type { SessionCaller } from '../sessions/sessions.service.js';
 import { ApprovalsService } from './approvals.service.js';
 import { DecideApprovalDto, ListApprovalsQuery, StartRunDto } from './runs.dto.js';
 import { RunsService } from './runs.service.js';
 
-/** Agent runs (Steps 4.3, 4.4a). Tenant from the API key only; another tenant's run is a 404. */
+/**
+ * Agent runs (Steps 4.3, 4.4a, 4.4b). SESSION TOKENS ONLY: a run acts for one host user, whose
+ * id, role and spec come from the verified token. A user sees only their own runs (another
+ * user's or another tenant's run is a 404).
+ */
 @Controller('runs')
+@SessionOnly()
 export class RunsController {
   constructor(
     private readonly runs: RunsService,
@@ -31,34 +37,38 @@ export class RunsController {
   /** 202 Accepted: the run was saved and queued; follow it with GET /runs/:id/events. */
   @Post()
   @HttpCode(202)
-  start(@CurrentCaller() caller: Caller, @Body() dto: StartRunDto) {
-    return this.runs.start(caller.tenantId, dto);
+  start(@CurrentSession() session: SessionCaller, @Body() dto: StartRunDto) {
+    return this.runs.start(session.tenantId, {
+      specId: session.specId,
+      message: dto.message,
+      principal: { userId: session.userId, role: session.role },
+    });
   }
 
   @Get(':runId')
-  get(@CurrentCaller() caller: Caller, @Param('runId') runId: string) {
-    return this.runs.get(caller.tenantId, runId);
+  get(@CurrentSession() session: SessionCaller, @Param('runId') runId: string) {
+    return this.runs.get(session.tenantId, runId, session.userId);
   }
 
   /**
    * The run's public events as Server-Sent Events (docs/run-events.md). Use fetch with an
    * `Authorization` header (never a token in the URL); resume with `Last-Event-ID` or `?after=`.
-   * The run is looked up first, so another tenant's run is a plain 404, not an empty stream.
+   * The run is looked up first, so another user's run is a plain 404, not an empty stream.
    * `@Res()` hands the raw response to us: Nest sends nothing itself for this route.
    */
   @Get(':runId/events')
   async streamEvents(
-    @CurrentCaller() caller: Caller,
+    @CurrentSession() session: SessionCaller,
     @Param('runId') runId: string,
     @Headers('last-event-id') lastEventId: string | undefined,
     @Query('after') after: string | undefined,
     @Req() req: IncomingMessage,
     @Res() res: ServerResponse,
   ): Promise<void> {
-    await this.runs.get(caller.tenantId, runId);
+    await this.runs.get(session.tenantId, runId, session.userId);
     await streamRunEvents(
       this.events,
-      caller.tenantId,
+      session.tenantId,
       runId,
       resumePoint(lastEventId, after),
       req,
@@ -69,39 +79,43 @@ export class RunsController {
   /** 202 Accepted: a waiting run is cancelled at once; a running one is stopped by its worker. */
   @Post(':runId/cancel')
   @HttpCode(202)
-  cancel(@CurrentCaller() caller: Caller, @Param('runId') runId: string) {
-    return this.runs.cancel(caller.tenantId, runId);
+  cancel(@CurrentSession() session: SessionCaller, @Param('runId') runId: string) {
+    return this.runs.cancel(session.tenantId, runId, session.userId);
   }
 }
 
-/** Approval cards: the inbox, and approving or rejecting with a reason. */
+/**
+ * Approval cards: the inbox, and approving or rejecting with a reason. SESSION TOKENS ONLY: the
+ * approver is the token's user, and sees the cards of runs on the spec the session is for.
+ */
 @Controller('approvals')
+@SessionOnly()
 export class ApprovalsController {
   constructor(private readonly approvals: ApprovalsService) {}
 
   @Get()
-  list(@CurrentCaller() caller: Caller, @Query() query: ListApprovalsQuery) {
-    return this.approvals.list(caller.tenantId, query.status);
+  list(@CurrentSession() session: SessionCaller, @Query() query: ListApprovalsQuery) {
+    return this.approvals.list(session.tenantId, session.specId, query.status);
   }
 
   /** 202 Accepted: the decision is recorded and the run continues in the background. */
   @Post(':approvalId/approve')
   @HttpCode(202)
   approve(
-    @CurrentCaller() caller: Caller,
+    @CurrentSession() session: SessionCaller,
     @Param('approvalId') approvalId: string,
     @Body() dto: DecideApprovalDto,
   ) {
-    return this.approvals.decide(caller.tenantId, approvalId, 'approved', dto);
+    return this.approvals.decide(session, approvalId, 'approved', dto.reason);
   }
 
   @Post(':approvalId/reject')
   @HttpCode(202)
   reject(
-    @CurrentCaller() caller: Caller,
+    @CurrentSession() session: SessionCaller,
     @Param('approvalId') approvalId: string,
     @Body() dto: DecideApprovalDto,
   ) {
-    return this.approvals.decide(caller.tenantId, approvalId, 'rejected', dto);
+    return this.approvals.decide(session, approvalId, 'rejected', dto.reason);
   }
 }

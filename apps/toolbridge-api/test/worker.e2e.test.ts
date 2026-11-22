@@ -33,12 +33,19 @@ import {
   hostOverrides,
   hostPolicy,
   hostSpec,
+  mintSession,
   startHarness,
   testEnv,
 } from './harness.js';
 
 const TOKEN = 'worker-e2e-token';
 const WORKER_MAIN = new URL('../../toolbridge-worker/dist/main.js', import.meta.url);
+/**
+ * Time allowed for a test that starts two real worker processes. A cold start takes about 8 to
+ * 10 s on a Windows dev machine (mostly loading modules; measured 2026-11-22), plus the 2 s lock
+ * and the stalled check, so these get more room than the usual 60 s.
+ */
+const TWO_WORKERS_MS = 120_000;
 
 /** A model reply for the fake servers and scripted models: text, one tool call, or hang. */
 type Reply = { text: string } | { tool: string; args: Record<string, unknown> } | 'hang';
@@ -228,15 +235,15 @@ async function tenant(policy: Record<string, unknown> = hostPolicy()) {
     .send({ enabled: true })
     .expect(200);
   await as(t.key).put(`/specs/${specId}/policy`).send({ policy }).expect(200);
-  return { key: t.key, specId };
+  // Session tokens, as the host's backend would mint them: u1 asks, u2 approves.
+  const u1 = await mintSession(http(), t.key, specId, 'u1');
+  const u2 = await mintSession(http(), t.key, specId, 'u2');
+  return { key: t.key, specId, u1, u2 };
 }
 
 /** Starts a run as support user u1 and returns its id. */
-async function startRun(t: { key: string; specId: string }, message = 'refund ORD-7 500') {
-  const started = await as(t.key)
-    .post('/runs')
-    .send({ specId: t.specId, message, principal: { userId: 'u1', role: 'support' } })
-    .expect(202);
+async function startRun(t: { u1: string }, message = 'refund ORD-7 500') {
+  const started = await as(t.u1).post('/runs').send({ message }).expect(202);
   return body<{ runId: string }>(started).runId;
 }
 
@@ -302,57 +309,65 @@ const NO_APPROVAL_POLICY = {
 };
 
 describe('runs on workers', () => {
-  it('a killed worker’s run is picked up by another worker and finishes', async () => {
-    h = await startHarness();
-    const t = await tenant();
-    llmReply = (call) => (call === 1 ? 'hang' : { text: 'all good' });
-    const first = await spawnWorker();
-    const runId = await startRun(t, 'how are you');
-    await until(() => llmCalls === 1); // worker 1 is inside the model call
-    first.kill('SIGKILL');
+  it(
+    'a killed worker’s run is picked up by another worker and finishes',
+    async () => {
+      h = await startHarness();
+      const t = await tenant();
+      llmReply = (call) => (call === 1 ? 'hang' : { text: 'all good' });
+      const first = await spawnWorker();
+      const runId = await startRun(t, 'how are you');
+      await until(() => llmCalls === 1); // worker 1 is inside the model call
+      first.kill('SIGKILL');
 
-    await spawnWorker();
-    const done = await waitFor(t.key, runId, 'completed', 'failed');
-    expect(done).toMatchObject({ status: 'completed', answer: 'all good' });
-    expect(llmCalls).toBe(2);
-  }, 60_000);
+      await spawnWorker();
+      const done = await waitFor(t.u1, runId, 'completed', 'failed');
+      expect(done).toMatchObject({ status: 'completed', answer: 'all good' });
+      expect(llmCalls).toBe(2);
+    },
+    TWO_WORKERS_MS,
+  );
 
-  it('a worker killed during a write: the next worker does not repeat it (outcome_unknown)', async () => {
-    h = await startHarness();
-    const t = await tenant(NO_APPROVAL_POLICY);
-    llmReply = (call, json) =>
-      call === 1
-        ? {
-            tool: 'refunds_request',
-            args: { orderId: 'ORD-7', amountCents: 500, reason: 'damaged' },
-          }
-        : { text: `final: ${lastContent(json)}` };
-    hangOnRefund = true; // the refund reaches the API, which never answers
-    const first = await spawnWorker();
-    const runId = await startRun(t);
-    await until(() => refunds.length === 1);
-    first.kill('SIGKILL');
+  it(
+    'a worker killed during a write: the next worker does not repeat it (outcome_unknown)',
+    async () => {
+      h = await startHarness();
+      const t = await tenant(NO_APPROVAL_POLICY);
+      llmReply = (call, json) =>
+        call === 1
+          ? {
+              tool: 'refunds_request',
+              args: { orderId: 'ORD-7', amountCents: 500, reason: 'damaged' },
+            }
+          : { text: `final: ${lastContent(json)}` };
+      hangOnRefund = true; // the refund reaches the API, which never answers
+      const first = await spawnWorker();
+      const runId = await startRun(t);
+      await until(() => refunds.length === 1);
+      first.kill('SIGKILL');
 
-    await spawnWorker();
-    const done = await waitFor(t.key, runId, 'completed', 'failed');
-    expect(done.status).toBe('completed');
-    expect(done.answer).toContain('already started once');
-    expect(refunds).toHaveLength(1); // never twice
-    const audit = body<{ phase: string; status: string | null }[]>(
-      await as(t.key).get(`/audit?runId=${runId}&safety=write`).expect(200),
-    );
-    expect(audit.map((r) => [r.phase, r.status])).toEqual([
-      ['finished', 'outcome_unknown'],
-      ['started', null],
-    ]);
-  }, 60_000);
+      await spawnWorker();
+      const done = await waitFor(t.u1, runId, 'completed', 'failed');
+      expect(done.status).toBe('completed');
+      expect(done.answer).toContain('already started once');
+      expect(refunds).toHaveLength(1); // never twice
+      const audit = body<{ phase: string; status: string | null }[]>(
+        await as(t.key).get(`/audit?runId=${runId}&safety=write`).expect(200),
+      );
+      expect(audit.map((r) => [r.phase, r.status])).toEqual([
+        ['finished', 'outcome_unknown'],
+        ['started', null],
+      ]);
+    },
+    TWO_WORKERS_MS,
+  );
 
   it('stops a run at its time limit and marks it failed, without retry', async () => {
     const model = new ScriptModel(() => 'hang');
     h = await startHarness({ RUN_LEG_TIMEOUT_MS: '1500' }, { llm: model });
     const t = await tenant();
     const runId = await startRun(t);
-    const done = await waitFor(t.key, runId, 'failed', 'completed');
+    const done = await waitFor(t.u1, runId, 'failed', 'completed');
     expect(done.error).toContain('time limit');
     await new Promise((r) => setTimeout(r, 3000)); // longer than the first retry's backoff
     expect(model.calls).toBe(1); // not retried
@@ -376,18 +391,18 @@ describe('runs on workers', () => {
 
     const running = await startRun(t, 'please wait');
     await until(() => model.calls >= 1);
-    await as(t.key).post(`/runs/${running}/cancel`).expect(202);
-    expect((await waitFor(t.key, running, 'cancelled', 'failed')).status).toBe('cancelled');
+    await as(t.u1).post(`/runs/${running}/cancel`).expect(202);
+    expect((await waitFor(t.u1, running, 'cancelled', 'failed')).status).toBe('cancelled');
 
     const waiting = await startRun(t);
-    const paused = await waitFor(t.key, waiting, 'waiting_for_approval');
-    await as(t.key).post(`/runs/${waiting}/cancel`).expect(202);
-    expect((await waitFor(t.key, waiting, 'cancelled')).status).toBe('cancelled');
-    await as(t.key)
+    const paused = await waitFor(t.u1, waiting, 'waiting_for_approval');
+    await as(t.u1).post(`/runs/${waiting}/cancel`).expect(202);
+    expect((await waitFor(t.u1, waiting, 'cancelled')).status).toBe('cancelled');
+    await as(t.u2)
       .post(`/approvals/${paused.approvalId ?? ''}/approve`)
-      .send({ approverId: 'u2' })
+      .send({})
       .expect(409);
-    await as(t.key).post(`/runs/${waiting}/cancel`).expect(409); // already ended
+    await as(t.u1).post(`/runs/${waiting}/cancel`).expect(409); // already ended
     expect(refunds).toHaveLength(0);
   }, 60_000);
 
@@ -396,7 +411,7 @@ describe('runs on workers', () => {
     h = await startHarness({}, { llm: model });
     const t = await tenant();
     const runId = await startRun(t);
-    const done = await waitFor(t.key, runId, 'failed', 'completed');
+    const done = await waitFor(t.u1, runId, 'failed', 'completed');
     expect(done.error).toContain('not retried again');
     expect(model.calls).toBe(3); // attempts: 3
   }, 60_000);

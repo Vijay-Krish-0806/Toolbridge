@@ -12,15 +12,25 @@ import type { Model } from 'mongoose';
 import { PLATFORM_CONFIG } from '../common/core.module.js';
 import type { PlatformConfig } from '../config.js';
 import { type ApiKey, MODEL } from '../domain/models.js';
+import { looksLikeJwt } from '../sessions/session-token.js';
+import { SessionsService } from '../sessions/sessions.service.js';
 import { adminKeyMatches, parseApiKey, secretMatches } from './api-key.js';
-import { IS_ADMIN_KEY, IS_PUBLIC_KEY, type AuthedRequest } from './auth.decorators.js';
+import {
+  IS_ADMIN_KEY,
+  IS_PUBLIC_KEY,
+  IS_SESSION_ONLY,
+  type AuthedRequest,
+} from './auth.decorators.js';
 
 /**
  * Authentication for every route (registered globally, so a new route is protected by default).
  * - Admin routes accept only PLATFORM_ADMIN_KEY.
+ * - @SessionOnly() routes (runs, approvals) accept only a session token (Step 4.4b): the token's
+ *   tenant, user and role become the request's session. Nothing in the body can choose them.
  * - All other routes accept only an active tenant API key, and the tenant it belongs to becomes
  *   the request's caller. Nothing in the URL or body can choose another tenant.
- * Every failure is the same 401, so callers cannot tell an unknown key from a wrong secret.
+ * Every failure is the same 401, so callers cannot tell an unknown key from a wrong secret, or a
+ * forged token from an expired one.
  */
 @Injectable()
 export class PlatformAuthGuard implements CanActivate {
@@ -28,6 +38,7 @@ export class PlatformAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     @Inject(PLATFORM_CONFIG) private readonly config: PlatformConfig,
     @InjectModel(MODEL.ApiKey.name) private readonly apiKeys: Model<ApiKey>,
+    private readonly sessions: SessionsService,
   ) {}
 
   /** Lets the request through only with the right kind of valid key. */
@@ -48,6 +59,16 @@ export class PlatformAuthGuard implements CanActivate {
       return true;
     }
 
+    if (flag(IS_SESSION_ONLY)) {
+      if (!looksLikeJwt(token)) throw this.denied();
+      try {
+        request.session = await this.sessions.resolve(token);
+      } catch {
+        throw this.denied();
+      }
+      return true;
+    }
+
     const parsed = parseApiKey(token);
     if (!parsed) throw this.denied();
     // The only query not scoped to a tenant: we do not know the tenant until the key is checked.
@@ -62,6 +83,6 @@ export class PlatformAuthGuard implements CanActivate {
 
   /** One message for every failure, on purpose. */
   private denied(): UnauthorizedException {
-    return new UnauthorizedException('Missing, invalid or revoked API key.');
+    return new UnauthorizedException('Missing, invalid, expired or revoked credentials.');
   }
 }

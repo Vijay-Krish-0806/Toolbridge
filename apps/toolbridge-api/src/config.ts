@@ -87,6 +87,12 @@ const envSchema = z.object({
    * (AES-256). Checked at startup, so a short or malformed key never reaches encryption.
    */
   PLATFORM_MASTER_KEY: masterKey,
+  /**
+   * Signs session tokens (Step 4.4b, HS256): base64 of exactly 32 random bytes, checked at
+   * startup like the master key. Anyone who has it can mint tokens for any tenant, so it lives
+   * only in the platform's environment. Changing it logs every user out.
+   */
+  PLATFORM_SESSION_KEY: masterKey,
   /** Label stored beside every wrapped data key, so rotation knows which master key wrapped it. */
   PLATFORM_MASTER_KEY_VERSION: z
     .string()

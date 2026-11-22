@@ -161,6 +161,8 @@ export interface Approval {
   _id: Types.ObjectId;
   tenantId: Types.ObjectId;
   runId: string;
+  /** The run's spec: approvers see only cards of the spec their session is for (Step 4.4b). */
+  specId: Types.ObjectId;
   status: ApprovalStatus;
   /** The strictest level in the turn; `high` means the requester may not approve it. */
   level: ApprovalRequest['level'];
@@ -209,6 +211,26 @@ export interface RunEventRecord {
   type: string;
   data: Record<string, unknown>;
   at: Date;
+}
+
+/**
+ * One session token's server-side record (Step 4.4b, ADR 0036), keyed by the token's `jti`.
+ * The token itself (a signed JWT) holds tenant, spec, user and role; this record lets a token be
+ * revoked before it expires, and holds what must never be in a browser: the host user's own
+ * API token, envelope-encrypted (used from Step 4.4c). MongoDB deletes the record when it expires.
+ */
+export interface Session {
+  _id: string;
+  tenantId: Types.ObjectId;
+  specId: Types.ObjectId;
+  userId: string;
+  role: string;
+  /** Who minted it: the tenant API key (the host's backend) or the dev login page. */
+  mintedBy: { kind: 'api_key'; keyId: string };
+  expiresAt: Date;
+  revokedAt: Date | null;
+  userToken: EncryptedSecret | null;
+  createdAt: Date;
 }
 
 /** Who a tool call was made for: a host user (agent runs), or a tenant API key (direct calls). */
@@ -349,6 +371,7 @@ runSchema.index({ tenantId: 1, createdAt: -1 });
 const approvalSchema = new Schema<Approval>({
   tenantId: { type: Schema.Types.ObjectId, required: true },
   runId: { type: String, required: true },
+  specId: { type: Schema.Types.ObjectId, required: true },
   status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], required: true },
   level: { type: String, enum: ['required', 'high'], required: true },
   requesterId: { type: String, required: true },
@@ -412,6 +435,25 @@ const runEventSchema = new Schema<RunEventRecord>({
 // Unique: one event per number; also serves "events of this run after seq N, in order".
 runEventSchema.index({ tenantId: 1, runId: 1, seq: 1 }, { unique: true });
 
+const sessionSchema = new Schema<Session>({
+  _id: { type: String, required: true },
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  specId: { type: Schema.Types.ObjectId, required: true },
+  userId: { type: String, required: true },
+  role: { type: String, required: true },
+  mintedBy: {
+    kind: { type: String, enum: ['api_key'], required: true },
+    keyId: { type: String, required: true },
+  },
+  expiresAt: { type: Date, required: true },
+  revokedAt: { type: Date, default: null },
+  userToken: { type: Schema.Types.Mixed, default: null },
+  createdAt: { type: Date, required: true },
+});
+// TTL index: MongoDB deletes a session (and its encrypted host token) once it has expired.
+sessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+sessionSchema.index({ tenantId: 1, userId: 1 });
+
 /** Model names and schemas in one list, shared by the Nest modules and index creation. */
 export const MODEL = {
   Tenant: { name: 'Tenant', schema: tenantSchema },
@@ -425,6 +467,7 @@ export const MODEL = {
   AuditEntry: { name: 'AuditEntry', schema: auditSchema },
   PolicyVersion: { name: 'PolicyVersion', schema: policyVersionSchema },
   RunEvent: { name: 'RunEvent', schema: runEventSchema },
+  Session: { name: 'Session', schema: sessionSchema },
 } as const;
 
 /**

@@ -64,7 +64,7 @@ describe('keys', () => {
       const req = request(h.http).get('/specs');
       const response = await (auth ? req.set('authorization', auth) : req).expect(401);
       expect(body<{ message: string }>(response).message).toBe(
-        'Missing, invalid or revoked API key.',
+        'Missing, invalid, expired or revoked credentials.',
       );
     }
   });

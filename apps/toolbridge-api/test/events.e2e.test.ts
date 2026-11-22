@@ -30,6 +30,7 @@ import {
   hostOverrides,
   hostPolicy,
   hostSpec,
+  mintSession,
   startHarness,
 } from './harness.js';
 
@@ -124,6 +125,7 @@ afterAll(async () => {
   upstream.close();
 });
 
+const http = () => h.http;
 const as = (key: string) => ({
   get: (path: string) => request(h.http).get(path).set('authorization', `Bearer ${key}`),
   post: (path: string) => request(h.http).post(path).set('authorization', `Bearer ${key}`),
@@ -132,7 +134,15 @@ const as = (key: string) => ({
 });
 
 /** A tenant with the host spec, a connection to the fake API, refunds enabled, the host policy. */
-async function tenant(name: string): Promise<{ key: string; specId: string }> {
+/** A test tenant: its API key and spec, and session tokens for u1 (asks) and u2 (approves). */
+interface TestTenant {
+  key: string;
+  specId: string;
+  u1: string;
+  u2: string;
+}
+
+async function tenant(name: string): Promise<TestTenant> {
   const t = await createTenant(h.http, name);
   const spec = await as(t.key)
     .post('/specs')
@@ -149,14 +159,14 @@ async function tenant(name: string): Promise<{ key: string; specId: string }> {
     .send({ enabled: true })
     .expect(200);
   await as(t.key).put(`/specs/${specId}/policy`).send({ policy: hostPolicy() }).expect(200);
-  return { key: t.key, specId };
+  // Session tokens, as the host's backend would mint them: u1 asks, u2 approves.
+  const u1 = await mintSession(http(), t.key, specId, 'u1');
+  const u2 = await mintSession(http(), t.key, specId, 'u2');
+  return { key: t.key, specId, u1, u2 };
 }
 
-async function startRun(t: { key: string; specId: string }, message: string): Promise<string> {
-  const started = await as(t.key)
-    .post('/runs')
-    .send({ specId: t.specId, message, principal: { userId: 'u1', role: 'support' } })
-    .expect(202);
+async function startRun(t: TestTenant, message: string): Promise<string> {
+  const started = await as(t.u1).post('/runs').send({ message }).expect(202);
   return body<{ runId: string }>(started).runId;
 }
 
@@ -223,8 +233,8 @@ async function readStream(
   }
 }
 
-let alice: { key: string; specId: string };
-let bob: { key: string; specId: string };
+let alice: TestTenant;
+let bob: TestTenant;
 
 beforeAll(async () => {
   alice = await tenant('Alice');
@@ -234,7 +244,7 @@ beforeAll(async () => {
 describe('run events', () => {
   it('streams 1..N without gaps, only public v1 events, and ends with run_finished', async () => {
     const runId = await startRun(alice, 'look ORD-7');
-    const { events, closedByServer } = await readStream(alice.key, runId);
+    const { events, closedByServer } = await readStream(alice.u1, runId);
 
     expect(closedByServer).toBe(true);
     expect(events.map((e) => e.seq)).toEqual(events.map((_e, i) => i + 1));
@@ -254,30 +264,30 @@ describe('run events', () => {
 
   it('replays exactly the missed events after Last-Event-ID or ?after=', async () => {
     const runId = await startRun(alice, 'look ORD-7');
-    await waitFor(alice.key, runId, 'completed');
-    const all = (await readStream(alice.key, runId)).events;
-    const firstTwo = (await readStream(alice.key, runId, { max: 2 })).events;
+    await waitFor(alice.u1, runId, 'completed');
+    const all = (await readStream(alice.u1, runId)).events;
+    const firstTwo = (await readStream(alice.u1, runId, { max: 2 })).events;
     expect(firstTwo.map((e) => e.seq)).toEqual([1, 2]);
 
-    const byHeader = (await readStream(alice.key, runId, { lastEventId: 2 })).events;
+    const byHeader = (await readStream(alice.u1, runId, { lastEventId: 2 })).events;
     expect(byHeader).toEqual(all.slice(2));
-    const byQuery = (await readStream(alice.key, runId, { after: 2 })).events;
+    const byQuery = (await readStream(alice.u1, runId, { after: 2 })).events;
     expect(byQuery).toEqual(all.slice(2));
   });
 
   it('closing the stream (the tab) does not stop the run', async () => {
     const runId = await startRun(alice, 'slow one');
-    const early = await readStream(alice.key, runId, { max: 1 }); // disconnects at once
+    const early = await readStream(alice.u1, runId, { max: 1 }); // disconnects at once
     expect(early.closedByServer).toBe(false);
-    await waitFor(alice.key, runId, 'completed');
-    const rest = (await readStream(alice.key, runId, { lastEventId: early.events.length })).events;
+    await waitFor(alice.u1, runId, 'completed');
+    const rest = (await readStream(alice.u1, runId, { lastEventId: early.events.length })).events;
     expect(rest.at(-1)).toMatchObject({ type: 'run_finished', data: { status: 'completed' } });
   });
 
   it('shows the approval card, then the approved write and the end, across two connections', async () => {
     const before = refunds;
     const runId = await startRun(alice, 'refund ORD-7 32893');
-    const first = await readStream(alice.key, runId, {
+    const first = await readStream(alice.u1, runId, {
       until: (e) => e.type === 'approval_required',
     });
     const card = first.events.at(-1);
@@ -297,11 +307,8 @@ describe('run events', () => {
     expect(refunds - before).toBe(0);
     if (card?.type !== 'approval_required') throw new Error('no card');
 
-    await as(alice.key)
-      .post(`/approvals/${card.data.approvalId}/approve`)
-      .send({ approverId: 'u2' })
-      .expect(202);
-    const second = await readStream(alice.key, runId, { lastEventId: card.seq });
+    await as(alice.u2).post(`/approvals/${card.data.approvalId}/approve`).send({}).expect(202);
+    const second = await readStream(alice.u1, runId, { lastEventId: card.seq });
     expect(second.events.map((e) => e.seq)[0]).toBe(card.seq + 1);
     expect(second.events.map((e) => e.type).slice(0, 2)).toEqual([
       'tool_call_started',
@@ -314,11 +321,11 @@ describe('run events', () => {
 
   it('cancelling a waiting run ends its stream with run_finished "cancelled"', async () => {
     const runId = await startRun(alice, 'refund ORD-7 40000');
-    const first = await readStream(alice.key, runId, {
+    const first = await readStream(alice.u1, runId, {
       until: (e) => e.type === 'approval_required',
     });
-    await as(alice.key).post(`/runs/${runId}/cancel`).expect(202);
-    const rest = await readStream(alice.key, runId, { lastEventId: first.events.length });
+    await as(alice.u1).post(`/runs/${runId}/cancel`).expect(202);
+    const rest = await readStream(alice.u1, runId, { lastEventId: first.events.length });
     expect(rest.closedByServer).toBe(true);
     expect(rest.events.map((e) => [e.type, e.type === 'run_finished' && e.data.status])).toEqual([
       ['run_finished', 'cancelled'],
@@ -327,7 +334,7 @@ describe('run events', () => {
 
   it("another tenant cannot open a run's stream (404)", async () => {
     const runId = await startRun(alice, 'look ORD-7');
-    const response = await readStream(bob.key, runId);
+    const response = await readStream(bob.u1, runId);
     expect(response.status).toBe(404);
     expect(response.events).toEqual([]);
   });

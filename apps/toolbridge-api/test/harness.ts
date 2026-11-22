@@ -26,6 +26,8 @@ export const ADMIN_KEY = 'e2e-admin-key-0123456789-abcdefghijklmnop';
 /** Fixed test-only master keys (base64 of 32 bytes), for encryption and rotation tests. */
 export const MASTER_KEY_V1 = Buffer.alloc(32, 1).toString('base64');
 export const MASTER_KEY_V2 = Buffer.alloc(32, 2).toString('base64');
+/** A fixed test-only session signing key (Step 4.4b). */
+export const SESSION_KEY = Buffer.alloc(32, 3).toString('base64');
 
 /** The host store spec, used as every tenant's sample API. */
 export function hostSpec(): Record<string, unknown> {
@@ -71,6 +73,7 @@ export function testEnv(): Record<string, string | undefined> {
     PLATFORM_MASTER_KEY: MASTER_KEY_V1,
     PLATFORM_MASTER_KEY_VERSION: 'v1',
     PLATFORM_PREVIOUS_MASTER_KEYS: '',
+    PLATFORM_SESSION_KEY: SESSION_KEY,
     // One queue per test process: test files never take each other's jobs. Kept across a
     // restart inside the same file, as a real deployment keeps its prefix.
     RUN_QUEUE_PREFIX: `e2e-${String(process.pid)}`,
@@ -136,6 +139,25 @@ export async function createTenant(http: App, name: string): Promise<{ id: strin
     .expect(201);
   const created = body<{ tenant: { id: string }; apiKey: string }>(response);
   return { id: created.tenant.id, key: created.apiKey };
+}
+
+/**
+ * Mints a session token for a host user, as the host's backend does with its tenant API key.
+ * The spec must have a policy that defines `role`.
+ */
+export async function mintSession(
+  http: App,
+  apiKey: string,
+  specId: string,
+  userId: string,
+  role = 'support',
+): Promise<string> {
+  const response = await request(http)
+    .post('/sessions')
+    .set('authorization', `Bearer ${apiKey}`)
+    .send({ specId, userId, role })
+    .expect(201);
+  return body<{ token: string }>(response).token;
 }
 
 /** Typed access to a JSON response body. */

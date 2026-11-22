@@ -34,6 +34,7 @@ import {
   hostOverrides,
   hostPolicy,
   hostSpec,
+  mintSession,
   startHarness,
 } from './harness.js';
 
@@ -175,6 +176,22 @@ async function tenantWithSpec(
   return { ...tenant, specId };
 }
 
+/** Session tokens per tenant and user, minted once (as a host backend would, per user). */
+const tokens = new Map<string, string>();
+async function user(
+  tenant: { key: string; specId: string },
+  userId: string,
+  role = 'support',
+): Promise<string> {
+  const id = `${tenant.key}:${tenant.specId}:${userId}:${role}`;
+  let token = tokens.get(id);
+  if (!token) {
+    token = await mintSession(h.http, tenant.key, tenant.specId, userId, role);
+    tokens.set(id, token);
+  }
+  return token;
+}
+
 /** Polls a run until it reaches `status` (runs execute in the background). */
 async function waitFor(key: string, runId: string, status: string): Promise<RunView> {
   for (let i = 0; i < 200; i++) {
@@ -191,16 +208,21 @@ async function pausedRefund(
   tenant: { key: string; specId: string },
   message = 'refund ORD-7 32893',
 ): Promise<{ run: RunView; card: CardView }> {
-  const started = await as(tenant.key)
+  // User u1 (support): the user and role come from the session token, not the body.
+  const started = await as(await user(tenant, 'u1'))
     .post('/runs')
-    .send({ specId: tenant.specId, message, principal: { userId: 'u1', role: 'support' } })
+    .send({ message })
     .expect(202);
   const run = await waitFor(
-    tenant.key,
+    await user(tenant, 'u1'),
     body<{ runId: string }>(started).runId,
     'waiting_for_approval',
   );
-  const cards = body<CardView[]>(await as(tenant.key).get('/approvals?status=pending').expect(200));
+  const cards = body<CardView[]>(
+    await as(await user(tenant, 'u1'))
+      .get('/approvals?status=pending')
+      .expect(200),
+  );
   const card = cards.find((c) => c.runId === run.id);
   if (!card) throw new Error('no card for the paused run');
   return { run, card };
@@ -245,22 +267,22 @@ describe('runs and approvals API', () => {
     });
     expect(refunds.length - before).toBe(0); // nothing ran before approval
 
-    const decided = await as(alice.key)
+    const decided = await as(await user(alice, 'u2'))
       .post(`/approvals/${card.id}/approve`)
-      .send({ approverId: 'u2', reason: 'checked the photos' })
+      .send({ reason: 'checked the photos' })
       .expect(202);
     expect(body<{ approval: CardView }>(decided).approval).toMatchObject({
       status: 'approved',
       approverId: 'u2',
     });
-    const done = await waitFor(alice.key, run.id, 'completed');
+    const done = await waitFor(await user(alice, 'u1'), run.id, 'completed');
     expect(refunds.length - before).toBe(1);
     expect(done.answer).toContain('pending'); // the model saw the API's answer
 
     // The card is decided for good: approving again is refused and runs nothing.
-    await as(alice.key)
+    await as(await user(alice, 'u3'))
       .post(`/approvals/${card.id}/approve`)
-      .send({ approverId: 'u3' })
+      .send({})
       .expect(409);
     expect(refunds.length - before).toBe(1);
 
@@ -296,21 +318,33 @@ describe('runs and approvals API', () => {
     expect(bobsAll.filter((r) => r.runId === run.id)).toEqual([]);
   });
 
-  it('a spec without a policy offers and runs no tools (deny by default)', async () => {
+  it('deny by default: no policy means no session, and a role the policy drops gets no tools', async () => {
     const carol = await tenantWithSpec('Carol', false);
     await as(carol.key).get(`/specs/${carol.specId}/policy`).expect(404);
+    // Without a policy there are no roles, so no session (and so no run) can be made at all.
+    await as(carol.key)
+      .post('/sessions')
+      .send({ specId: carol.specId, userId: 'u1', role: 'owner' })
+      .expect(422);
+    // The owner gets a session under a policy, then the policy changes to define no roles: the
+    // still-valid session runs with an empty menu (deny by default at run time, not only at mint).
+    await as(carol.key)
+      .put(`/specs/${carol.specId}/policy`)
+      .send({ policy: { version: 1, roles: { owner: { allow: ['*'] } } } })
+      .expect(200);
+    const owner = await user(carol, 'u1', 'owner');
+    await as(carol.key)
+      .put(`/specs/${carol.specId}/policy`)
+      .send({ policy: { version: 1, roles: {} } })
+      .expect(200);
     const before = refunds.length;
     const firstCall = model.offered.length;
-    const started = await as(carol.key)
+    const started = await as(owner)
       .post('/runs')
-      .send({
-        specId: carol.specId,
-        message: 'refund ORD-7 32893',
-        principal: { userId: 'u1', role: 'owner' }, // even the owner role gets nothing
-      })
+      .send({ message: 'refund ORD-7 32893' })
       .expect(202);
     const runId = body<{ runId: string }>(started).runId;
-    const done = await waitFor(carol.key, runId, 'completed');
+    const done = await waitFor(owner, runId, 'completed');
 
     // Offered nothing on every model call; the refund the model asked for anyway was refused.
     expect(model.offered.slice(firstCall)).toEqual([[], []]);
@@ -342,40 +376,53 @@ describe('runs and approvals API', () => {
     const before = refunds.length;
     const { run, card } = await pausedRefund(alice);
     const [a, b] = await Promise.all([
-      as(alice.key).post(`/approvals/${card.id}/approve`).send({ approverId: 'u2' }),
-      as(alice.key).post(`/approvals/${card.id}/approve`).send({ approverId: 'u3' }),
+      as(await user(alice, 'u2'))
+        .post(`/approvals/${card.id}/approve`)
+        .send({}),
+      as(await user(alice, 'u3'))
+        .post(`/approvals/${card.id}/approve`)
+        .send({}),
     ]);
     expect([a.status, b.status].sort()).toEqual([202, 409]);
-    await waitFor(alice.key, run.id, 'completed');
+    await waitFor(await user(alice, 'u1'), run.id, 'completed');
     expect(refunds.length - before).toBe(1);
   });
 
   it('refuses self-approval of a high-risk action; the card stays pending', async () => {
     const before = refunds.length;
     const { run, card } = await pausedRefund(alice);
-    await as(alice.key)
+    await as(await user(alice, 'u1'))
       .post(`/approvals/${card.id}/approve`)
-      .send({ approverId: 'u1' })
+      .send({})
       .expect(403);
-    const after = body<RunView>(await as(alice.key).get(`/runs/${run.id}`).expect(200));
+    const after = body<RunView>(
+      await as(await user(alice, 'u1'))
+        .get(`/runs/${run.id}`)
+        .expect(200),
+    );
     expect(after.status).toBe('waiting_for_approval');
-    const pending = body<CardView[]>(await as(alice.key).get('/approvals?status=pending'));
+    const pending = body<CardView[]>(
+      await as(await user(alice, 'u1')).get('/approvals?status=pending'),
+    );
     expect(pending.map((c) => c.id)).toContain(card.id);
     expect(refunds.length - before).toBe(0);
 
     // Clean up for later tests: someone else rejects it.
-    await as(alice.key).post(`/approvals/${card.id}/reject`).send({ approverId: 'u2' }).expect(202);
-    await waitFor(alice.key, run.id, 'completed');
+    await as(await user(alice, 'u2'))
+      .post(`/approvals/${card.id}/reject`)
+      .send({})
+      .expect(202);
+    await waitFor(await user(alice, 'u1'), run.id, 'completed');
   });
 
   it('rejecting runs nothing and tells the model why', async () => {
     const before = refunds.length;
     const { run, card } = await pausedRefund(alice);
-    await as(alice.key)
+    await as(await user(alice, 'u2'))
       .post(`/approvals/${card.id}/reject`)
-      .send({ approverId: 'u2', reason: 'amount too high' })
+      .send({ reason: 'amount too high' })
       .expect(202);
-    const done = await waitFor(alice.key, run.id, 'completed');
+    const done = await waitFor(await user(alice, 'u1'), run.id, 'completed');
     expect(done.answer).toBe('final: Not run: rejected by u2: amount too high');
     expect(refunds.length - before).toBe(0);
   });
@@ -383,24 +430,36 @@ describe('runs and approvals API', () => {
   it('another tenant cannot see, approve or reject a run or its card (404, nothing runs)', async () => {
     const before = refunds.length;
     const { run, card } = await pausedRefund(alice);
-    await as(bob.key).get(`/runs/${run.id}`).expect(404);
-    await as(bob.key).post(`/approvals/${card.id}/approve`).send({ approverId: 'u2' }).expect(404);
-    await as(bob.key).post(`/approvals/${card.id}/reject`).send({ approverId: 'u2' }).expect(404);
-    const bobs = body<CardView[]>(await as(bob.key).get('/approvals').expect(200));
-    expect(bobs.map((c) => c.id)).not.toContain(card.id);
-    // A run on another tenant's spec is refused too.
-    await as(bob.key)
-      .post('/runs')
-      .send({
-        specId: alice.specId,
-        message: 'refund ORD-7 1',
-        principal: { userId: 'u1', role: 'support' },
-      })
+    await as(await user(bob, 'u1'))
+      .get(`/runs/${run.id}`)
       .expect(404);
+    await as(await user(bob, 'u2'))
+      .post(`/approvals/${card.id}/approve`)
+      .send({})
+      .expect(404);
+    await as(await user(bob, 'u2'))
+      .post(`/approvals/${card.id}/reject`)
+      .send({})
+      .expect(404);
+    const bobs = body<CardView[]>(
+      await as(await user(bob, 'u1'))
+        .get('/approvals')
+        .expect(200),
+    );
+    expect(bobs.map((c) => c.id)).not.toContain(card.id);
+    // A session cannot be minted for another tenant's spec, and the API key cannot start runs.
+    await as(bob.key)
+      .post('/sessions')
+      .send({ specId: alice.specId, userId: 'u1', role: 'support' })
+      .expect(404);
+    await as(bob.key).post('/runs').send({ message: 'refund ORD-7 1' }).expect(401);
     expect(refunds.length - before).toBe(0);
 
-    await as(alice.key).post(`/approvals/${card.id}/reject`).send({ approverId: 'u2' }).expect(202);
-    await waitFor(alice.key, run.id, 'completed');
+    await as(await user(alice, 'u2'))
+      .post(`/approvals/${card.id}/reject`)
+      .send({})
+      .expect(202);
+    await waitFor(await user(alice, 'u1'), run.id, 'completed');
   });
 
   it('survives a restart of API and worker: approve after restart runs the write once; a second approval does not', async () => {
@@ -411,15 +470,15 @@ describe('runs and approvals API', () => {
     await h.stop();
     h = await startHarness({}, { keepDatabase: true, llm: new RefundModel() });
 
-    await as(alice.key)
+    await as(await user(alice, 'u2'))
       .post(`/approvals/${card.id}/approve`)
-      .send({ approverId: 'u2' })
+      .send({})
       .expect(202);
-    await waitFor(alice.key, run.id, 'completed');
+    await waitFor(await user(alice, 'u1'), run.id, 'completed');
     expect(refunds.length - before).toBe(1);
-    await as(alice.key)
+    await as(await user(alice, 'u2'))
       .post(`/approvals/${card.id}/approve`)
-      .send({ approverId: 'u2' })
+      .send({})
       .expect(409);
     expect(refunds.length - before).toBe(1);
   });

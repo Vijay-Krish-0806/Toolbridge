@@ -30,6 +30,8 @@ import { PoliciesController } from './policies/policies.controller.js';
 import { ApprovalsService } from './runs/approvals.service.js';
 import { ApprovalsController, RunsController } from './runs/runs.controller.js';
 import { RunsService } from './runs/runs.service.js';
+import { SessionsController } from './sessions/sessions.controller.js';
+import { SessionsService } from './sessions/sessions.service.js';
 import { SpecsController } from './specs/specs.controller.js';
 import { AdminTenantsController, TenantController } from './tenants/tenants.controller.js';
 import { TenantsService } from './tenants/tenants.service.js';
@@ -90,6 +92,7 @@ export class AppModule {
         ApprovalsController,
         AuditController,
         PoliciesController,
+        SessionsController,
       ],
       providers: [
         // Global: every route needs a key unless it is marked @Public().
@@ -98,6 +101,7 @@ export class AppModule {
         CallsService,
         RunsService,
         ApprovalsService,
+        SessionsService,
         Lifecycle,
       ],
     };
