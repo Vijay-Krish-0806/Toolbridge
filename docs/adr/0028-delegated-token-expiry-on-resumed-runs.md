@@ -1,6 +1,6 @@
 # ADR-0028: Delegated user token expiring while a run waits for approval
 
-- **Status:** Accepted (option 0; validated in Step 4.4c)
+- **Status:** Accepted (option 0); validated in Step 4.4c, see ADR 0038
 - **Date:** 2026-11-22
 
 ## Context

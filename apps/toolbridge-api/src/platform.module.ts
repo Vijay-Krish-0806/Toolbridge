@@ -20,6 +20,7 @@ import { EventLog } from './events/event-log.js';
 import { PoliciesService } from './policies/policies.service.js';
 import { RunQueue } from './runs/run-queue.js';
 import { RunToolsService } from './runs/run-tools.js';
+import { UserTokenStore } from './sessions/user-token-store.js';
 import { SpecsService } from './specs/specs.service.js';
 
 /** LangGraph's checkpointer (ADR 0030), shared by the API (reads run state) and the workers. */
@@ -53,6 +54,7 @@ export class PlatformModule {
       RunToolsService,
       RunQueue,
       EventLog,
+      UserTokenStore,
     ];
     return {
       module: PlatformModule,

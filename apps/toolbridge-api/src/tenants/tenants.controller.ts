@@ -1,7 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
 
 import { AdminOnly, CurrentCaller, type Caller } from '../auth/auth.decorators.js';
-import { CreateApiKeyDto, CreateTenantDto, SetOriginsDto } from './tenants.dto.js';
+import {
+  CreateApiKeyDto,
+  CreateTenantDto,
+  SetCredentialModeDto,
+  SetOriginsDto,
+} from './tenants.dto.js';
 import { type ApiKeyView, TenantsService } from './tenants.service.js';
 
 /** Platform administration: creating tenants. Admin key only. */
@@ -32,6 +37,12 @@ export class TenantController {
   @Put('tenant/origins')
   setOrigins(@CurrentCaller() caller: Caller, @Body() dto: SetOriginsDto) {
     return this.tenants.setOrigins(caller.tenantId, dto.origins);
+  }
+
+  /** service (the stored key) or delegated (each user's own host token) for new runs. */
+  @Put('tenant/credential-mode')
+  setCredentialMode(@CurrentCaller() caller: Caller, @Body() dto: SetCredentialModeDto) {
+    return this.tenants.setCredentialMode(caller.tenantId, dto.mode);
   }
 
   @Get('api-keys')

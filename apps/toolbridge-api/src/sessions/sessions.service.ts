@@ -8,10 +8,11 @@ import { KEY_PROVIDER, PLATFORM_CONFIG } from '../common/core.module.js';
 import type { PlatformConfig } from '../config.js';
 import { encryptSecret } from '../crypto/envelope.js';
 import type { KeyProvider } from '../crypto/key-provider.js';
-import { MODEL, type Session } from '../domain/models.js';
+import { MODEL, type Session, type Tenant } from '../domain/models.js';
 import { PoliciesService } from '../policies/policies.service.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { InvalidSessionToken, signSessionToken, verifySessionToken } from './session-token.js';
+import { sessionAad } from './user-token-store.js';
 
 /** Default and longest session lifetime: short, because a token in a browser can leak. */
 export const DEFAULT_SESSION_SECONDS = 15 * 60;
@@ -35,11 +36,6 @@ export interface MintInput {
   userToken?: string;
 }
 
-/** The AAD that binds an encrypted host token to its tenant and session. */
-export function sessionAad(tenantId: Types.ObjectId, jti: string): string {
-  return `tenant:${tenantId.toHexString()}:session:${jti}`;
-}
-
 /**
  * Token exchange (Step 4.4b, ADRs 0027, 0029, 0036). The host's BACKEND, holding the tenant API
  * key, asks for a session for one of its users; ToolBridge returns a short-lived signed token
@@ -54,6 +50,7 @@ export class SessionsService {
     @Inject(PLATFORM_CONFIG) config: PlatformConfig,
     @Inject(KEY_PROVIDER) private readonly keys: KeyProvider,
     @InjectModel(MODEL.Session.name) private readonly model: Model<Session>,
+    @InjectModel(MODEL.Tenant.name) private readonly tenants: Model<Tenant>,
     private readonly specs: SpecsService,
     private readonly policies: PoliciesService,
   ) {
@@ -82,6 +79,14 @@ export class SessionsService {
     if (!Object.hasOwn(policy.roles, input.role)) {
       throw new UnprocessableEntityException(
         `Role "${input.role}" is not in this spec's policy (roles: ${Object.keys(policy.roles).join(', ') || 'none'}).`,
+      );
+    }
+    // Delegation (Step 4.4c): every call of this user's runs uses their own host token, so a
+    // session without one would be useless; refuse it now rather than fail at the first tool.
+    const tenant = await this.tenants.findById(tenantId).lean<Tenant>().exec();
+    if (tenant?.credentialMode === 'delegated' && input.userToken === undefined) {
+      throw new UnprocessableEntityException(
+        "This tenant uses delegated credentials: pass the user's own host token as userToken.",
       );
     }
     const jti = randomUUID();

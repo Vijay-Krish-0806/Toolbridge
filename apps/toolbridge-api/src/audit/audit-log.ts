@@ -23,6 +23,11 @@ export interface AuditContext {
   runId: string | null;
   actor: AuditActor;
   credentialMode: CredentialMode;
+  /**
+   * Delegated mode: whose host token a call ran with (the requester's, or the approver's for an
+   * approved call). Unset in service mode: the stored service credential made the call.
+   */
+  credentialUserFor?: (callId: string) => string | null;
   /** The spec's policy version in force (null = no policy, deny-all; or a direct call). */
   policyVersion: number | null;
   /**
@@ -76,6 +81,7 @@ export class AuditLog {
       safety: call.safety,
       actor: context.actor,
       credentialMode: context.credentialMode,
+      credentialUserId: context.credentialUserFor?.(call.callId) ?? null,
       argsHash: call.argsHash,
       status: null,
       durationMs: null,
@@ -169,6 +175,7 @@ function view(row: AuditEntry): AuditView {
     safety: row.safety,
     actor: row.actor,
     credentialMode: row.credentialMode,
+    credentialUserId: row.credentialUserId,
     argsHash: row.argsHash,
     status: row.status,
     durationMs: row.durationMs,

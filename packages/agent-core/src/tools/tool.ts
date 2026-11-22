@@ -1,5 +1,7 @@
 import type { z } from 'zod';
 
+import type { AuthProvider } from '../openapi/auth.js';
+
 /**
  * How dangerous a tool is. `read` tools only look at data, so running one twice is harmless.
  * `write` tools change data, so the executor never retries them automatically (a retry could
@@ -10,6 +12,12 @@ export type SafetyClass = 'read' | 'write';
 export interface ToolContext {
   /** Fires when the executor's timeout expires. Pass it to fetch so slow calls are really cancelled. */
   signal: AbortSignal;
+  /**
+   * Step 4.4c: the credential for THIS call, chosen per call by the executor's `credentialFor`
+   * (user delegation: the requester's or the approver's own host token). When set, a tool that
+   * calls an API uses it instead of the credential it was created with.
+   */
+  auth?: AuthProvider;
 }
 
 /**

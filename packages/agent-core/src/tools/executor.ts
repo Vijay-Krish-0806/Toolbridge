@@ -1,8 +1,10 @@
 import { z } from 'zod';
 import type { Principal, ToolAuthorizer } from '../agent/access.js';
 import type { ToolCall } from '../llm/types.js';
+import type { AuthProvider } from '../openapi/auth.js';
 import {
   type AuditedCall,
+  CredentialUnavailableError,
   hashArguments,
   type ToolAuditor,
   WriteAlreadyStartedError,
@@ -53,6 +55,13 @@ export interface ToolExecutorOptions {
    * `started` record was saved (write-ahead, fail closed). See tools/audit.ts.
    */
   audit?: ToolAuditor;
+  /**
+   * Step 4.4c: picks the credential for each call (for example the requester's own host token,
+   * or the approver's for an approved write). Runs after the access and argument checks and
+   * before the write-ahead audit row; throwing CredentialUnavailableError refuses the call with
+   * `credential_unavailable`. Unset: tools use the credential they were created with.
+   */
+  credentialFor?: (call: ToolCall) => Promise<AuthProvider | undefined>;
 }
 
 /** Per-call options for `ToolExecutor.run`. */
@@ -73,6 +82,8 @@ export class ToolExecutor {
   private readonly maxResultChars: number;
   private readonly authorizer: ToolAuthorizer | undefined;
   private readonly audit: ToolAuditor | undefined;
+  private readonly credentialFor:
+    ((call: ToolCall) => Promise<AuthProvider | undefined>) | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -87,6 +98,7 @@ export class ToolExecutor {
     this.maxResultChars = options.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
     this.authorizer = options.authorizer;
     this.audit = options.audit;
+    this.credentialFor = options.credentialFor;
   }
 
   /**
@@ -166,6 +178,21 @@ export class ToolExecutor {
         `Invalid arguments for ${tool.name}:\n${z.prettifyError(parsed.error)}`,
       );
     }
+    // The identity this call runs under (Step 4.4c). Picked before the audit row is written, so a
+    // call that cannot get its credential leaves no "started" row behind.
+    let auth: AuthProvider | undefined;
+    try {
+      auth = await this.credentialFor?.(call);
+    } catch (error) {
+      if (error instanceof CredentialUnavailableError) {
+        return fail(
+          'credential_unavailable',
+          `${error.message} The action was not run; the user must sign in again.`,
+        );
+      }
+      throw error;
+    }
+
     // Write-ahead: a write runs only once its audit record is saved.
     if (audit && tool.safety === 'write') {
       try {
@@ -189,7 +216,8 @@ export class ToolExecutor {
     for (let attempt = 1; ; attempt++) {
       try {
         const output = await withTimeout(
-          (attemptSignal) => tool.execute(parsed.data, { signal: attemptSignal }),
+          (attemptSignal) =>
+            tool.execute(parsed.data, { signal: attemptSignal, ...(auth && { auth }) }),
           this.timeoutMs,
           signal,
         );

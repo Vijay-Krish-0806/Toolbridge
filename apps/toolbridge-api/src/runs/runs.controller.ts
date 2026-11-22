@@ -42,6 +42,7 @@ export class RunsController {
       specId: session.specId,
       message: dto.message,
       principal: { userId: session.userId, role: session.role },
+      sessionId: session.jti,
     });
   }
 

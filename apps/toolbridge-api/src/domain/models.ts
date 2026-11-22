@@ -17,6 +17,8 @@ export interface Tenant {
    * for example the host app's web address. Empty: no browser access at all.
    */
   allowedOrigins: string[];
+  /** Whose credential runs use (Step 4.4c); new runs take it at start. Default `service`. */
+  credentialMode: CredentialMode;
   createdAt: Date;
 }
 
@@ -120,11 +122,12 @@ export interface ApiConnection {
 export type RunStatus = 'running' | 'waiting_for_approval' | 'completed' | 'failed' | 'cancelled';
 
 /**
- * Whose credential the tool calls use (ADR 0027, 0028). Only `service` (the spec's stored
- * connection) exists until Step 4.4c adds user delegation; it is recorded so the audit trail of
- * every run says which one it used.
+ * Whose credential a run's tool calls use (ADRs 0027, 0028, 0038):
+ * - `service`: the spec's stored connection (one account for every user);
+ * - `delegated`: each user's own host token (Step 4.4c), so the host applies its own rules to
+ *   that user. An approved write uses the APPROVER's token. Recorded on every run and audit row.
  */
-export type CredentialMode = 'service';
+export type CredentialMode = 'service' | 'delegated';
 
 /**
  * One agent run (Step 4.3). `_id` is a UUID and is also LangGraph's `thread_id`, the key of the
@@ -138,6 +141,8 @@ export interface Run {
   message: string;
   principal: Principal;
   credentialMode: CredentialMode;
+  /** The requester's session (its jti): in delegated mode, whose host token the calls use. */
+  requesterSession: string | null;
   status: RunStatus;
   /** The open (or last) approval of this run. */
   approvalId: Types.ObjectId | null;
@@ -174,6 +179,8 @@ export interface Approval {
   requesterId: string;
   calls: PendingCall[];
   approverId: string | null;
+  /** The approver's session (its jti): in delegated mode the approved calls use its host token. */
+  approverSession: string | null;
   reason: string | null;
   decidedAt: Date | null;
   createdAt: Date;
@@ -261,6 +268,8 @@ export interface AuditEntry {
   safety: SafetyClass | null;
   actor: AuditActor;
   credentialMode: CredentialMode;
+  /** Delegated mode: the host user whose own token made the call (requester or approver). */
+  credentialUserId: string | null;
   argsHash: string;
   /** `ok` or the error code; null on a `started` row. */
   status: string | null;
@@ -279,6 +288,7 @@ export interface AuditEntry {
 const tenantSchema = new Schema<Tenant>({
   name: { type: String, required: true },
   allowedOrigins: { type: [String], default: [] },
+  credentialMode: { type: String, enum: ['service', 'delegated'], default: 'service' },
   createdAt: { type: Date, required: true },
 });
 // Multikey index: "does any tenant allow this origin?" (CORS preflight, which has no token).
@@ -358,7 +368,8 @@ const runSchema = new Schema<Run>({
     userId: { type: String, required: true },
     role: { type: String, required: true },
   },
-  credentialMode: { type: String, enum: ['service'], required: true },
+  credentialMode: { type: String, enum: ['service', 'delegated'], required: true },
+  requesterSession: { type: String, default: null },
   status: {
     type: String,
     enum: ['running', 'waiting_for_approval', 'completed', 'failed', 'cancelled'],
@@ -385,6 +396,7 @@ const approvalSchema = new Schema<Approval>({
   requesterId: { type: String, required: true },
   calls: { type: Schema.Types.Mixed, required: true },
   approverId: { type: String, default: null },
+  approverSession: { type: String, default: null },
   reason: { type: String, default: null },
   decidedAt: { type: Date, default: null },
   createdAt: { type: Date, required: true },
@@ -400,7 +412,8 @@ const auditSchema = new Schema<AuditEntry>({
   toolName: { type: String, required: true },
   safety: { type: String, enum: ['read', 'write', null], default: null },
   actor: { type: Schema.Types.Mixed, required: true },
-  credentialMode: { type: String, enum: ['service'], required: true },
+  credentialMode: { type: String, enum: ['service', 'delegated'], required: true },
+  credentialUserId: { type: String, default: null },
   argsHash: { type: String, required: true },
   status: { type: String, default: null },
   durationMs: { type: Number, default: null },

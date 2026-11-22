@@ -6,7 +6,12 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { hashArguments, type ToolAuditor, WriteAlreadyStartedError } from './audit.js';
+import {
+  CredentialUnavailableError,
+  hashArguments,
+  type ToolAuditor,
+  WriteAlreadyStartedError,
+} from './audit.js';
 import { ToolExecutionError } from './errors.js';
 import { type RetryEvent, ToolExecutor, truncateResult } from './executor.js';
 import { ToolRegistry } from './registry.js';
@@ -266,5 +271,59 @@ describe('ToolExecutor with an auditor', () => {
       `finished get_thing ok ${hash}`,
       `finished made_up unknown_tool ${hash}`,
     ]);
+  });
+});
+
+/**
+ * Step 4.4c (user delegation): the executor picks each call's credential. A call whose user
+ * credential is gone is refused, never run under another identity, and leaves no audit row.
+ */
+describe('ToolExecutor with credentialFor', () => {
+  /** A write tool that records which credential it was given. */
+  function credentialTool() {
+    const seen: (string | undefined)[] = [];
+    const tool = defineTool({
+      name: 'refund_thing',
+      description: 'test tool',
+      safety: 'write',
+      input: z.object({ id: z.string() }),
+      execute: async (_args, context) => {
+        seen.push(await context.auth?.secretFor('bearer', { type: 'http', scheme: 'bearer' }));
+        return { ok: true };
+      },
+    });
+    return { tool, seen };
+  }
+  const token = (value: string) => ({ secretFor: () => Promise.resolve(value) });
+
+  it('passes the chosen credential to the tool', async () => {
+    const { tool, seen } = credentialTool();
+    const executor = new ToolExecutor(new ToolRegistry([tool]), {
+      credentialFor: (c) => Promise.resolve(token(`user-token-for-${c.id}`)),
+    });
+    await executor.run(call('refund_thing', '{"id":"a"}'));
+    expect(seen).toEqual(['user-token-for-call_1']);
+  });
+
+  it('refuses a call whose credential is unavailable: not run, no audit row', async () => {
+    const { tool, seen } = credentialTool();
+    const events: string[] = [];
+    const executor = new ToolExecutor(new ToolRegistry([tool]), {
+      credentialFor: () => Promise.reject(new CredentialUnavailableError('The session ended.')),
+      audit: {
+        started: () => {
+          events.push('started');
+          return Promise.resolve();
+        },
+        finished: (_c, outcome) => {
+          events.push(`finished ${outcome.status}`);
+          return Promise.resolve();
+        },
+      },
+    });
+    const result = await executor.run(call('refund_thing', '{"id":"a"}'));
+    expect(result).toMatchObject({ ok: false, error: { code: 'credential_unavailable' } });
+    expect(seen).toEqual([]);
+    expect(events).toEqual(['finished credential_unavailable']);
   });
 });

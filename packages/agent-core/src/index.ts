@@ -18,6 +18,7 @@ export {
   type AuditedCall,
   type AuditOutcome,
   type ToolAuditor,
+  CredentialUnavailableError,
   WriteAlreadyStartedError,
 } from './tools/audit.js';
 export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/errors.js';

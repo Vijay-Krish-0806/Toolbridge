@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { ApprovalDecision, Principal } from '@toolbridge/agent-core';
 import type { Model, Types } from 'mongoose';
@@ -10,6 +15,8 @@ import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type Approval, MODEL, type Run, type RunStatus } from '../domain/models.js';
 import { EventLog } from '../events/event-log.js';
+import { UserTokenStore } from '../sessions/user-token-store.js';
+import { TenantsService } from '../tenants/tenants.service.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { RunQueue } from './run-queue.js';
 import { RunToolsService } from './run-tools.js';
@@ -51,6 +58,8 @@ export class RunsService {
     private readonly runTools: RunToolsService,
     private readonly queue: RunQueue,
     private readonly events: EventLog,
+    private readonly tenants: TenantsService,
+    private readonly userTokens: UserTokenStore,
   ) {}
 
   /**
@@ -61,10 +70,17 @@ export class RunsService {
    */
   async start(
     tenantId: Types.ObjectId,
-    input: { specId: string; message: string; principal: Principal },
+    input: { specId: string; message: string; principal: Principal; sessionId: string },
   ): Promise<{ runId: string; status: RunStatus }> {
     const spec = await this.specs.requireSpec(tenantId, input.specId);
     const runId = randomUUID();
+    // The mode is fixed now, for the whole run: switching the tenant later never changes it.
+    const credentialMode = await this.tenants.credentialModeOf(tenantId);
+    if (credentialMode === 'delegated' && !(await this.userTokens.has(tenantId, input.sessionId))) {
+      throw new UnprocessableEntityException(
+        'This tenant uses delegated credentials and this session carries no host token.',
+      );
+    }
     await this.runTools.build(tenantId, spec, { runId, principal: input.principal });
     const now = new Date();
     await this.runs(tenantId).insertOne({
@@ -72,7 +88,8 @@ export class RunsService {
       specId: spec._id,
       message: input.message,
       principal: { userId: input.principal.userId, role: input.principal.role },
-      credentialMode: 'service',
+      credentialMode,
+      requesterSession: credentialMode === 'delegated' ? input.sessionId : null,
       status: 'running',
       approvalId: null,
       answer: null,
@@ -102,10 +119,20 @@ export class RunsService {
     tenantId: Types.ObjectId,
     runId: string,
     approval: NonNullable<AuditContext['approval']>,
+    approverSession: string,
   ): Promise<Run> {
     const run = await this.require(tenantId, runId);
     if (run.status !== 'waiting_for_approval') {
       throw new ConflictException(`Run ${runId} is not waiting for approval.`);
+    }
+    // Delegated (ADR 0028): the approved calls will run with the APPROVER's own host token.
+    if (
+      run.credentialMode === 'delegated' &&
+      !(await this.userTokens.has(tenantId, approverSession))
+    ) {
+      throw new UnprocessableEntityException(
+        'This run uses delegated credentials: approve with a session that carries your host token.',
+      );
     }
     const spec = await this.specs.requireSpec(tenantId, run.specId.toHexString());
     await this.runTools.build(tenantId, spec, { runId, principal: run.principal, approval });

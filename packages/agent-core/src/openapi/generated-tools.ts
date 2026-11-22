@@ -42,8 +42,16 @@ export function createOpenApiTools(
     // z.fromJSONSchema is marked semi-experimental in zod 4.6.7; it is used once per tool, here.
     input: z.fromJSONSchema(definition.inputSchema as JsonSchemaInput),
     parameters: definition.inputSchema,
-    execute: (args: unknown, { signal }) =>
-      callOperation(definition, args as Args, baseUrl, options, signal),
+    // The call's own credential (user delegation, Step 4.4c) wins over the one the tools were
+    // created with (the tenant's stored service credential).
+    execute: (args: unknown, { signal, auth }) =>
+      callOperation(
+        definition,
+        args as Args,
+        baseUrl,
+        auth ? { ...options, auth } : options,
+        signal,
+      ),
   }));
 }
 

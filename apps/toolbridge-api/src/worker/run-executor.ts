@@ -73,6 +73,11 @@ export class RunExecutor {
       ...(card && {
         approval: { ...card, approverId: job.kind === 'resume' ? job.decision.approverId : '' },
       }),
+      credential: {
+        mode: run.credentialMode,
+        requesterSession: run.requesterSession,
+        approverSession: card?.approverSession ?? null,
+      },
     });
     // The leg's progress goes to the event log; every event is written before the leg ends,
     // also when it throws, so a later run_finished never gets a smaller number than its text.
@@ -169,6 +174,7 @@ export class RunExecutor {
           requesterId,
           calls,
           approverId: null,
+          approverSession: null,
           reason: null,
           decidedAt: null,
           createdAt: now,

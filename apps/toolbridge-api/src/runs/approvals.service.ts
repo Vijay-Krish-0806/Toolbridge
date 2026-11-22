@@ -98,16 +98,19 @@ export class ApprovalsService {
     }
     // Build the run's dependencies first: if that fails (for example the connection was deleted),
     // the card stays pending instead of being decided for a run that cannot continue.
-    const prepared = await this.runs.prepareResume(tenantId, card.runId, {
-      ...card,
-      approverId: input.approverId,
-    });
+    const prepared = await this.runs.prepareResume(
+      tenantId,
+      card.runId,
+      { ...card, approverId: input.approverId },
+      session.jti,
+    );
 
     const decided = await this.scoped(tenantId).findOneAndUpdate(
       { _id: card._id, status: 'pending' },
       {
         status: decision,
         approverId: input.approverId,
+        approverSession: session.jti,
         reason: input.reason ?? null,
         decidedAt: new Date(),
       },

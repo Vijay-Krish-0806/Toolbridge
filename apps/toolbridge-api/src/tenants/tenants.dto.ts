@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsString, Length } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsIn, IsString, Length } from 'class-validator';
 
 import { MAX_ORIGINS } from '../auth/origins.js';
 
@@ -22,4 +22,10 @@ export class SetOriginsDto {
   @IsString({ each: true })
   @Length(1, 200, { each: true })
   origins!: string[];
+}
+
+/** PUT /tenant/credential-mode: whose credential this tenant's runs use (Step 4.4c). */
+export class SetCredentialModeDto {
+  @IsIn(['service', 'delegated'])
+  mode!: 'service' | 'delegated';
 }

@@ -10,6 +10,7 @@ export type ToolErrorCode =
   | 'forbidden' // the person's role may not use this tool (Step 4.2): do not retry, explain
   | 'audit_unavailable' // the write could not be recorded first, so it did not run (Step 4.10)
   | 'outcome_unknown' // this exact write already started once (a retried run); not run again (4.4a)
+  | 'credential_unavailable' // the user's own host token is gone (expired, logged out): not run (4.4c)
   | 'internal'; // a bug in our own tool code
 
 /** A failure in the normalized shape that goes back to the model. */

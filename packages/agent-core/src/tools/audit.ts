@@ -20,6 +20,15 @@ export class WriteAlreadyStartedError extends Error {
   override readonly name = 'WriteAlreadyStartedError';
 }
 
+/**
+ * Thrown by an executor's `credentialFor` when the identity a call must run under is not
+ * available (Step 4.4c: the user's session expired or was revoked). The call is refused with
+ * `credential_unavailable`; it never falls back to another identity.
+ */
+export class CredentialUnavailableError extends Error {
+  override readonly name = 'CredentialUnavailableError';
+}
+
 /** What the executor knows about a call. Who asked and why is added by the app's adapter. */
 export interface AuditedCall {
   callId: string;

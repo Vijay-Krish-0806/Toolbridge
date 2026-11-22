@@ -11,7 +11,7 @@ import { generateApiKey } from '../auth/api-key.js';
 import { normalizeOrigin } from '../auth/origins.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
-import { type ApiKey, MODEL, type Tenant } from '../domain/models.js';
+import { type ApiKey, type CredentialMode, MODEL, type Tenant } from '../domain/models.js';
 
 /** What callers see about a key: never the secret or its hash. */
 export interface ApiKeyView {
@@ -39,16 +39,38 @@ export class TenantsService {
   }
 
   /** The calling tenant's own record. */
-  async get(
-    tenantId: Types.ObjectId,
-  ): Promise<{ id: string; name: string; allowedOrigins: string[] }> {
+  async get(tenantId: Types.ObjectId): Promise<{
+    id: string;
+    name: string;
+    allowedOrigins: string[];
+    credentialMode: CredentialMode;
+  }> {
     const tenant = await this.tenants.findById(tenantId).lean<Tenant>().exec();
     if (!tenant) throw new NotFoundException('Tenant not found.');
     return {
       id: tenant._id.toHexString(),
       name: tenant.name,
       allowedOrigins: tenant.allowedOrigins,
+      credentialMode: tenant.credentialMode,
     };
+  }
+
+  /**
+   * Sets whose credential NEW runs use (Step 4.4c). Running and waiting runs keep the mode they
+   * started with, so switching never changes the identity of a run half-way.
+   */
+  async setCredentialMode(
+    tenantId: Types.ObjectId,
+    mode: CredentialMode,
+  ): Promise<{ credentialMode: CredentialMode }> {
+    await this.tenants.updateOne({ _id: tenantId }, { $set: { credentialMode: mode } }).exec();
+    return { credentialMode: mode };
+  }
+
+  /** The tenant's current mode (what a run starting now takes). */
+  async credentialModeOf(tenantId: Types.ObjectId): Promise<CredentialMode> {
+    const tenant = await this.tenants.findById(tenantId).lean<Tenant>().exec();
+    return tenant?.credentialMode ?? 'service';
   }
 
   /**
