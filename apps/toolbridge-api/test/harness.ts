@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { LLMProvider } from '@toolbridge/agent-core';
 import mongoose from 'mongoose';
 import request, { type Response } from 'supertest';
 
@@ -49,11 +50,12 @@ export interface Harness {
  * Boots the real app in-process on an empty e2e database (never your development data), with
  * small limits so each one can be hit: 3 specs per tenant, 512 KB bodies, a 2 s fetch timeout,
  * and only "localhost" allowed to resolve to a private address.
- * `env` overrides settings (for example the master key); `keepDatabase` restarts on the same data.
+ * `env` overrides settings (for example the master key); `keepDatabase` restarts on the same data;
+ * `llm` replaces the real model for agent runs (a scripted one in tests).
  */
 export async function startHarness(
   env: Record<string, string> = {},
-  options: { keepDatabase?: boolean } = {},
+  options: { keepDatabase?: boolean; llm?: LLMProvider } = {},
 ): Promise<Harness> {
   const config = loadConfig({
     ...process.env,
@@ -79,9 +81,12 @@ export async function startHarness(
 
   const { AppModule } = await fromDist<AppModuleFile>('app.module.js');
   const { configureApp } = await fromDist<BootstrapFile>('bootstrap.js');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule.register(config), {
-    logger: false,
-  });
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule.register(config, options.llm ? { llm: options.llm } : {}),
+    {
+      logger: false,
+    },
+  );
   configureApp(app, config);
   await app.init();
   return { app, http: app.getHttpServer() as App, config };

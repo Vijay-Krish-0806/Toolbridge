@@ -20,6 +20,11 @@ export function mongooseCollection<T>(model: Model<T>): Collection<T> {
     insertOne: async (doc) => (await new model(doc).save()).toObject(),
     updateOne: async (filter, set) =>
       (await model.updateOne(filterOf(filter), { $set: set }).exec()).matchedCount,
+    findOneAndUpdate: (filter, set) =>
+      model
+        .findOneAndUpdate(filterOf(filter), { $set: set }, { returnDocument: 'after' })
+        .lean<T>()
+        .exec(),
     countDocuments: (filter) => model.countDocuments(filterOf(filter)).exec(),
     deleteOne: async (filter) => (await model.deleteOne(filterOf(filter)).exec()).deletedCount,
   };

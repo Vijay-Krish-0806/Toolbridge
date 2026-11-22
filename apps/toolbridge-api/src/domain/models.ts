@@ -4,6 +4,7 @@
  */
 import { type Connection, Schema, type Types } from 'mongoose';
 
+import type { AgentUsage, ApprovalRequest, PendingCall, Principal } from '@toolbridge/agent-core';
 import type { RiskLevel, SafetyClass } from '@toolbridge/spec-compiler';
 
 import type { EncryptedSecret } from '../crypto/envelope.js';
@@ -106,6 +107,66 @@ export interface ApiConnection {
   updatedAt: Date;
 }
 
+/**
+ * running: the graph is executing in this process. waiting_for_approval: paused on an approval
+ * card (its checkpoint is in MongoDB). completed: the graph finished. failed: it threw, or the
+ * process stopped while it was running.
+ */
+export type RunStatus = 'running' | 'waiting_for_approval' | 'completed' | 'failed';
+
+/**
+ * Whose credential the tool calls use (ADR 0027, 0028). Only `service` (the spec's stored
+ * connection) exists until Step 4.4c adds user delegation; it is recorded so the audit trail of
+ * every run says which one it used.
+ */
+export type CredentialMode = 'service';
+
+/**
+ * One agent run (Step 4.3). `_id` is a UUID and is also LangGraph's `thread_id`, the key of the
+ * run's checkpoints. The principal is stored here because LangGraph never checkpoints the run
+ * context: a resume must supply the same identity again, and it comes from this record.
+ */
+export interface Run {
+  _id: string;
+  tenantId: Types.ObjectId;
+  specId: Types.ObjectId;
+  message: string;
+  principal: Principal;
+  credentialMode: CredentialMode;
+  status: RunStatus;
+  /** The open (or last) approval of this run. */
+  approvalId: Types.ObjectId | null;
+  answer: string | null;
+  stopReason: string | null;
+  usage: AgentUsage | null;
+  /** Why the run failed, for people; never a stack trace. */
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+
+/**
+ * One approval card: a paused model turn with every call and its exact arguments. Created by the
+ * API when it sees the pause (outside the graph, so the graph's approval node stays side-effect
+ * free). Decided exactly once: the pending -> decided change is one atomic update.
+ */
+export interface Approval {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  runId: string;
+  status: ApprovalStatus;
+  /** The strictest level in the turn; `high` means the requester may not approve it. */
+  level: ApprovalRequest['level'];
+  requesterId: string;
+  calls: PendingCall[];
+  approverId: string | null;
+  reason: string | null;
+  decidedAt: Date | null;
+  createdAt: Date;
+}
+
 const tenantSchema = new Schema<Tenant>({
   name: { type: String, required: true },
   createdAt: { type: Date, required: true },
@@ -176,6 +237,45 @@ const connectionSchema = new Schema<ApiConnection>({
 });
 connectionSchema.index({ tenantId: 1, specId: 1 }, { unique: true });
 
+const runSchema = new Schema<Run>({
+  _id: { type: String, required: true },
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  specId: { type: Schema.Types.ObjectId, required: true },
+  message: { type: String, required: true },
+  principal: {
+    userId: { type: String, required: true },
+    role: { type: String, required: true },
+  },
+  credentialMode: { type: String, enum: ['service'], required: true },
+  status: {
+    type: String,
+    enum: ['running', 'waiting_for_approval', 'completed', 'failed'],
+    required: true,
+  },
+  approvalId: { type: Schema.Types.ObjectId, default: null },
+  answer: { type: String, default: null },
+  stopReason: { type: String, default: null },
+  usage: { type: Schema.Types.Mixed, default: null },
+  error: { type: String, default: null },
+  createdAt: { type: Date, required: true },
+  updatedAt: { type: Date, required: true },
+});
+runSchema.index({ tenantId: 1, createdAt: -1 });
+
+const approvalSchema = new Schema<Approval>({
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  runId: { type: String, required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], required: true },
+  level: { type: String, enum: ['required', 'high'], required: true },
+  requesterId: { type: String, required: true },
+  calls: { type: Schema.Types.Mixed, required: true },
+  approverId: { type: String, default: null },
+  reason: { type: String, default: null },
+  decidedAt: { type: Date, default: null },
+  createdAt: { type: Date, required: true },
+});
+approvalSchema.index({ tenantId: 1, status: 1, createdAt: 1 });
+
 /** Model names and schemas in one list, shared by the Nest modules and index creation. */
 export const MODEL = {
   Tenant: { name: 'Tenant', schema: tenantSchema },
@@ -184,6 +284,8 @@ export const MODEL = {
   SpecVersion: { name: 'SpecVersion', schema: specVersionSchema },
   ToolSetting: { name: 'ToolSetting', schema: toolSettingSchema },
   ApiConnection: { name: 'ApiConnection', schema: connectionSchema },
+  Run: { name: 'Run', schema: runSchema },
+  Approval: { name: 'Approval', schema: approvalSchema },
 } as const;
 
 /**

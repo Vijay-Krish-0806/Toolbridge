@@ -2,6 +2,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -18,7 +19,7 @@ import { Types as MongoTypes } from 'mongoose';
 import { KEY_PROVIDER, OUTBOUND_HTTP } from '../common/core.module.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
-import { decryptSecret, encryptSecret, rewrapSecret } from '../crypto/envelope.js';
+import { DecryptionError, decryptSecret, encryptSecret, rewrapSecret } from '../crypto/envelope.js';
 import type { KeyProvider } from '../crypto/key-provider.js';
 import { type ApiConnection, MODEL } from '../domain/models.js';
 import { SpecsService } from '../specs/specs.service.js';
@@ -106,7 +107,8 @@ export class ConnectionsService {
 
   /**
    * For a tool call: the base URL and an AuthProvider holding the decrypted secret. The plaintext
-   * exists only inside the returned provider, for this one call.
+   * exists only inside the returned provider, for this one call (or one agent run). A secret
+   * that does not decrypt becomes a fixed 500 message that never hints at which part failed.
    */
   async forCall(
     tenantId: Types.ObjectId,
@@ -120,9 +122,21 @@ export class ConnectionsService {
     }
     const { baseUrl, auth, secret } = connection;
     if (auth.kind === 'none' || secret === null) return { baseUrl };
-    const payload = JSON.parse(
-      decryptSecret(secret, connectionAad(tenantId, connection._id), this.keys),
-    ) as SecretPayload;
+    let payload: SecretPayload;
+    try {
+      payload = JSON.parse(
+        decryptSecret(secret, connectionAad(tenantId, connection._id), this.keys),
+      ) as SecretPayload;
+    } catch (error) {
+      if (error instanceof DecryptionError) {
+        // Usually the master key was changed without keeping the old one in
+        // PLATFORM_PREVIOUS_MASTER_KEYS.
+        throw new InternalServerErrorException(
+          'The stored credential could not be decrypted; set the connection again.',
+        );
+      }
+      throw error;
+    }
     if ('secrets' in payload) return { baseUrl, auth: new StaticCredentials(payload.secrets) };
     return {
       baseUrl,

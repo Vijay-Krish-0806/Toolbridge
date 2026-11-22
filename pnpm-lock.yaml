@@ -266,6 +266,12 @@ importers:
       '@toolbridge/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@toolbridge/checkpoint-mongo':
+        specifier: workspace:*
+        version: link:../../packages/checkpoint-mongo
+      '@toolbridge/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@toolbridge/retrieval':
         specifier: workspace:*
         version: link:../../packages/retrieval

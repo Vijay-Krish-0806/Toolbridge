@@ -30,6 +30,10 @@ function recordingCollection(): { collection: Collection<Doc>; filters: Filter[]
       filters.push(filter);
       return Promise.resolve(0);
     },
+    findOneAndUpdate: (filter) => {
+      filters.push(filter);
+      return Promise.resolve(null);
+    },
     countDocuments: (filter) => {
       filters.push(filter);
       return Promise.resolve(0);
@@ -61,7 +65,8 @@ describe('TenantScoped', () => {
     await scoped.updateOne({ name: 'shop' }, { name: 'store' });
     await scoped.countDocuments();
     await scoped.deleteOne({ name: 'shop' });
-    expect(filters).toHaveLength(5);
+    await scoped.findOneAndUpdate({ name: 'shop' }, { name: 'store' });
+    expect(filters).toHaveLength(6);
     for (const filter of filters) expect(filter.tenantId).toEqual(TENANT);
   });
 
@@ -81,5 +86,8 @@ describe('TenantScoped', () => {
     >);
     expect(inserted.tenantId).toEqual(TENANT);
     expect(() => scoped.updateOne({ name: 'shop' }, { tenantId: other })).toThrow(TenantScopeError);
+    expect(() => scoped.findOneAndUpdate({ name: 'shop' }, { tenantId: other })).toThrow(
+      TenantScopeError,
+    );
   });
 });

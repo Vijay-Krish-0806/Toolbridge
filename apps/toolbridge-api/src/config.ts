@@ -1,5 +1,16 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { type LLMConfig, loadLLMConfig } from '@toolbridge/agent-core';
+import { parsePolicy, type Policy } from '@toolbridge/policy';
 import { type EmbeddingConfig, loadEmbeddingConfig } from '@toolbridge/retrieval';
 import { z } from 'zod';
+
+/** The host store's policy in the repo (src/ or dist/ -> ../../../specs/). Used until Step 4.3b. */
+const DEFAULT_POLICY_FILE = fileURLToPath(
+  new URL('../../../specs/host-store.policy.json', import.meta.url),
+);
 
 /** The placeholder in .env.example; refused so a copied example never runs as a real key. */
 export const EXAMPLE_ADMIN_KEY = 'change-me-to-a-long-random-string-of-at-least-32-chars';
@@ -99,7 +110,26 @@ const envSchema = z.object({
 export type PlatformConfig = z.infer<typeof envSchema> & {
   /** The tool index's embedding model (EMBEDDING_* variables, validated by the retrieval package). */
   embedding: EmbeddingConfig;
+  /** The model agent runs use (LLM_* variables, validated by agent-core). */
+  llm: LLMConfig;
+  /**
+   * Roles and approval rules for every run (PLATFORM_POLICY_FILE, default: the host store's policy
+   * in specs/). Platform configuration until Step 4.3b stores a policy per spec.
+   */
+  policy: Policy;
 };
+
+/** Reads and validates the policy file; a missing or invalid file stops startup. */
+function loadPolicyFile(path: string): Policy {
+  try {
+    return parsePolicy(JSON.parse(readFileSync(path, 'utf8')));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid platform configuration: PLATFORM_POLICY_FILE (${path}): ${message}`, {
+      cause: error,
+    });
+  }
+}
 
 /** Validates environment variables once at startup, so a bad config fails fast with a clear message. */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): PlatformConfig {
@@ -107,5 +137,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PlatformConfig
   if (!result.success) {
     throw new Error(`Invalid platform configuration:\n${z.prettifyError(result.error)}`);
   }
-  return { ...result.data, embedding: loadEmbeddingConfig(env) };
+  const policyFile = env.PLATFORM_POLICY_FILE
+    ? resolve(env.PLATFORM_POLICY_FILE)
+    : DEFAULT_POLICY_FILE;
+  return {
+    ...result.data,
+    embedding: loadEmbeddingConfig(env),
+    llm: loadLLMConfig(env),
+    policy: loadPolicyFile(policyFile),
+  };
 }

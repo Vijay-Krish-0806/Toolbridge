@@ -1,12 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  InternalServerErrorException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   createOpenApiTools,
   type SafeHttpClient,
@@ -17,7 +11,6 @@ import {
 import type { Types } from 'mongoose';
 
 import { OUTBOUND_HTTP } from '../common/core.module.js';
-import { DecryptionError } from '../crypto/envelope.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { ConnectionsService } from './connections.service.js';
 
@@ -56,19 +49,7 @@ export class CallsService {
     if (!setting.enabled)
       throw new ForbiddenException(`"${toolName}" is disabled for this tenant.`);
 
-    let connection: Awaited<ReturnType<ConnectionsService['forCall']>>;
-    try {
-      connection = await this.connections.forCall(tenantId, spec._id);
-    } catch (error) {
-      if (error instanceof DecryptionError) {
-        // Fixed message: never hint at which part failed. Usually the master key was changed
-        // without keeping the old one in PLATFORM_PREVIOUS_MASTER_KEYS.
-        throw new InternalServerErrorException(
-          'The stored credential could not be decrypted; set the connection again.',
-        );
-      }
-      throw error;
-    }
+    const connection = await this.connections.forCall(tenantId, spec._id);
 
     const tools = createOpenApiTools([definition], {
       baseUrl: connection.baseUrl,
