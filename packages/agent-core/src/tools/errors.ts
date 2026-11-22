@@ -11,6 +11,8 @@ export type ToolErrorCode =
   | 'audit_unavailable' // the write could not be recorded first, so it did not run (Step 4.10)
   | 'outcome_unknown' // this exact write already started once (a retried run); not run again (4.4a)
   | 'credential_unavailable' // the user's own host token is gone (expired, logged out): not run (4.4c)
+  | 'circuit_open' // the API kept failing, so calls to it are paused for a while: not sent (4.5)
+  | 'rate_limited' // the tenant's call rate is used up for now: not sent (4.5)
   | 'internal'; // a bug in our own tool code
 
 /** A failure in the normalized shape that goes back to the model. */

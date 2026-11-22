@@ -24,6 +24,7 @@ import { ConnectionsService } from '../connections/connections.service.js';
 import type { CredentialMode, Spec } from '../domain/models.js';
 import { UserTokenStore } from '../sessions/user-token-store.js';
 import { PoliciesService } from '../policies/policies.service.js';
+import { Breakers, RateLimiter } from './rate-limiter.js';
 import { SpecsService } from '../specs/specs.service.js';
 
 /**
@@ -67,6 +68,8 @@ export class RunToolsService {
     private readonly audit: AuditLog,
     private readonly policies: PoliciesService,
     private readonly userTokens: UserTokenStore,
+    private readonly rateLimiter: RateLimiter,
+    private readonly breakers: Breakers,
   ) {}
 
   /**
@@ -137,6 +140,9 @@ export class RunToolsService {
       registry,
       executor: new ToolExecutor(registry, {
         authorizer,
+        // Step 4.5: stop calling an API that keeps failing, and keep each tenant within its rate.
+        breaker: this.breakers.for(tenantId.toHexString(), spec._id.toHexString()),
+        rateLimit: () => this.rateLimiter.take('tool-calls', tenantId.toHexString()),
         // Step 4.5: when the API supports keys, every write carries one derived from DURABLE
         // state (tenant, run, call id, arguments): the same on a retry, after a token refresh, a
         // change of identity or a worker takeover, so the API does the write once.

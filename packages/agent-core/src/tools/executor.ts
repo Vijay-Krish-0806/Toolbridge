@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Principal, ToolAuthorizer } from '../agent/access.js';
 import type { ToolCall } from '../llm/types.js';
 import type { AuthProvider } from '../openapi/auth.js';
+import type { CircuitBreaker } from './circuit-breaker.js';
 import {
   type AuditedCall,
   CredentialUnavailableError,
@@ -70,6 +71,16 @@ export interface ToolExecutorOptions {
    * again (the API replays its stored answer) instead of being refused as `outcome_unknown`.
    */
   idempotencyKeyFor?: (call: ToolCall) => string | undefined;
+  /**
+   * Step 4.5: the circuit breaker of the API these tools call. While it is open, calls fail at
+   * once with `circuit_open` (nothing is sent); every attempt's outcome is reported to it.
+   */
+  breaker?: CircuitBreaker;
+  /**
+   * Step 4.5: asks for one unit of the tenant's call rate (a token bucket, for example in Redis).
+   * A short wait (up to 2 s) is waited out; a longer one refuses the call with `rate_limited`.
+   */
+  rateLimit?: () => Promise<{ allowed: boolean; retryAfterMs: number }>;
 }
 
 /** Per-call options for `ToolExecutor.run`. */
@@ -93,6 +104,9 @@ export class ToolExecutor {
   private readonly credentialFor:
     ((call: ToolCall) => Promise<AuthProvider | undefined>) | undefined;
   private readonly idempotencyKeyFor: ((call: ToolCall) => string | undefined) | undefined;
+  private readonly breaker: CircuitBreaker | undefined;
+  private readonly rateLimit:
+    (() => Promise<{ allowed: boolean; retryAfterMs: number }>) | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -109,6 +123,8 @@ export class ToolExecutor {
     this.audit = options.audit;
     this.credentialFor = options.credentialFor;
     this.idempotencyKeyFor = options.idempotencyKeyFor;
+    this.breaker = options.breaker;
+    this.rateLimit = options.rateLimit;
   }
 
   /**
@@ -188,6 +204,12 @@ export class ToolExecutor {
         `Invalid arguments for ${tool.name}:\n${z.prettifyError(parsed.error)}`,
       );
     }
+    // Step 4.5: the API's circuit and the tenant's rate, checked before anything is recorded or
+    // sent, so a call stopped here leaves no audit row and reaches no API.
+    if (this.breaker?.state() === 'open') return this.circuitOpen();
+    const limited = await this.takeRate();
+    if (limited) return limited;
+
     // The identity this call runs under (Step 4.4c). Picked before the audit row is written, so a
     // call that cannot get its credential leaves no "started" row behind.
     let auth: AuthProvider | undefined;
@@ -231,6 +253,7 @@ export class ToolExecutor {
     }
 
     for (let attempt = 1; ; attempt++) {
+      if (this.breaker && !this.breaker.allow()) return this.circuitOpen();
       try {
         const output = await withTimeout(
           (attemptSignal) =>
@@ -242,10 +265,12 @@ export class ToolExecutor {
           this.timeoutMs,
           signal,
         );
+        this.breaker?.recordSuccess();
         const content = JSON.stringify(output ?? null);
         return { ok: true, content: truncateResult(content, this.maxResultChars) };
       } catch (thrown) {
         const error = toToolError(thrown);
+        this.report(error);
         // RETRY POLICY BY TOOL CLASS (Step 4.5): reads are retried; a write only when it carries
         // an idempotency key (the API then does it once however often it arrives). A write
         // without a key is never retried: if the first attempt reached the server, a retry
@@ -260,6 +285,46 @@ export class ToolExecutor {
         await this.sleep(delayMs);
       }
     }
+  }
+
+  /**
+   * Tells the breaker how an attempt went: network errors, timeouts and retryable HTTP errors
+   * (5xx, 429) mean the API is unwell; any other answer (a 4xx) means it is working.
+   */
+  private report(error: ToolError): void {
+    if (!this.breaker) return;
+    const unwell =
+      error.code === 'network' ||
+      error.code === 'timeout' ||
+      (error.code === 'http_error' && error.retryable);
+    if (unwell) this.breaker.recordFailure();
+    else if (error.code === 'http_error') this.breaker.recordSuccess();
+  }
+
+  private circuitOpen(): ToolResult {
+    const seconds = Math.ceil((this.breaker?.retryAfterMs() ?? 0) / 1000);
+    return fail(
+      'circuit_open',
+      `The API is failing, so calls to it are paused for about ${String(seconds)} s. Nothing was sent; try again later.`,
+    );
+  }
+
+  /**
+   * Takes one unit of the tenant's rate. Waits out short waits (backpressure: the run slows
+   * down instead of failing); a long wait, or three in a row, refuses the call.
+   */
+  private async takeRate(): Promise<ToolResult | undefined> {
+    if (!this.rateLimit) return undefined;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { allowed, retryAfterMs } = await this.rateLimit();
+      if (allowed) return undefined;
+      if (retryAfterMs > 2000) break;
+      await this.sleep(retryAfterMs);
+    }
+    return fail(
+      'rate_limited',
+      'Too many tool calls right now for this account. Nothing was sent; try again in a moment.',
+    );
   }
 
   /**

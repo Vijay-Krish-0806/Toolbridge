@@ -66,6 +66,10 @@ const envSchema = z.object({
    * so another worker takes the job over after about this long (BullMQ default 30 s).
    */
   WORKER_LOCK_MS: z.coerce.number().int().min(500).default(30_000),
+  /** Per tenant: runs that may start per minute (token bucket in Redis, Step 4.5). */
+  RATE_RUNS_PER_MINUTE: z.coerce.number().int().min(1).default(30),
+  /** Per tenant: tool calls per second across all its runs, protecting the tenant's API. */
+  RATE_TOOL_CALLS_PER_SECOND: z.coerce.number().int().min(1).default(10),
   /**
    * Creates tenants. Compared in constant time. At least 32 characters, and never the example
    * value, so a weak or copied key fails at startup instead of in production.

@@ -18,6 +18,7 @@ import { ConnectionsService } from './connections/connections.service.js';
 import { MODEL } from './domain/models.js';
 import { EventLog } from './events/event-log.js';
 import { PoliciesService } from './policies/policies.service.js';
+import { Breakers, RateLimiter } from './runs/rate-limiter.js';
 import { RunQueue } from './runs/run-queue.js';
 import { RunToolsService } from './runs/run-tools.js';
 import { UserTokenStore } from './sessions/user-token-store.js';
@@ -55,6 +56,8 @@ export class PlatformModule {
       RunQueue,
       EventLog,
       UserTokenStore,
+      RateLimiter,
+      Breakers,
     ];
     return {
       module: PlatformModule,

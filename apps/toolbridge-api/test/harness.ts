@@ -80,6 +80,10 @@ export function testEnv(): Record<string, string | undefined> {
     RUN_QUEUE_PREFIX: `e2e-${String(process.pid)}`,
     // A dead worker's job is taken over after about 2 s instead of 30 s.
     WORKER_LOCK_MS: '2000',
+    // Generous limits, so suites that start many runs never trip them by accident; the rate
+    // limit test sets its own.
+    RATE_RUNS_PER_MINUTE: '10000',
+    RATE_TOOL_CALLS_PER_SECOND: '10000',
   };
 }
 

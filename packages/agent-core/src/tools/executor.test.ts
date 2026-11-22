@@ -12,6 +12,7 @@ import {
   type ToolAuditor,
   WriteAlreadyStartedError,
 } from './audit.js';
+import { CircuitBreaker } from './circuit-breaker.js';
 import { ToolExecutionError } from './errors.js';
 import { type RetryEvent, ToolExecutor, truncateResult } from './executor.js';
 import { ToolRegistry } from './registry.js';
@@ -378,5 +379,59 @@ describe('ToolExecutor with idempotency keys', () => {
     });
     expect(await executor.run(call('refund_thing', '{"id":"a"}'))).toMatchObject({ ok: true });
     expect(write.calls()).toBe(1);
+  });
+});
+
+/**
+ * Step 4.5: an open circuit and a used-up rate stop a call before anything is sent; a 4xx
+ * counts as the API working, a 5xx as it failing.
+ */
+describe('ToolExecutor with a circuit breaker and a rate limit', () => {
+  it('fails fast while the circuit is open, without calling the tool', async () => {
+    const read = flakyTool('get_thing', 'read', 99, serverError);
+    const breaker = new CircuitBreaker({ failureThreshold: 2, openMs: 60_000 });
+    const executor = new ToolExecutor(new ToolRegistry([read.tool]), {
+      breaker,
+      maxRetries: 0,
+      sleep: () => Promise.resolve(),
+    });
+    await executor.run(call('get_thing', '{"id":"a"}'));
+    await executor.run(call('get_thing', '{"id":"a"}'));
+    expect(breaker.state()).toBe('open');
+    const result = await executor.run(call('get_thing', '{"id":"a"}'));
+    expect(result).toMatchObject({ ok: false, error: { code: 'circuit_open' } });
+    expect(read.calls()).toBe(2);
+  });
+
+  it('does not count a 4xx answer as a failure', async () => {
+    const notFound = new ToolExecutionError('http_error', 'HTTP 404', { status: 404 });
+    const read = flakyTool('get_thing', 'read', 99, notFound);
+    const breaker = new CircuitBreaker({ failureThreshold: 1 });
+    const executor = new ToolExecutor(new ToolRegistry([read.tool]), { breaker });
+    await executor.run(call('get_thing', '{"id":"a"}'));
+    expect(breaker.state()).toBe('closed');
+  });
+
+  it('waits out a short rate wait, and refuses a long one without calling the tool', async () => {
+    const read = flakyTool('get_thing', 'read', 0, serverError);
+    const waits: number[] = [];
+    let answers = [
+      { allowed: false, retryAfterMs: 300 },
+      { allowed: true, retryAfterMs: 0 },
+    ];
+    const executor = new ToolExecutor(new ToolRegistry([read.tool]), {
+      rateLimit: () => Promise.resolve(answers.shift() ?? { allowed: true, retryAfterMs: 0 }),
+      sleep: (ms) => {
+        waits.push(ms);
+        return Promise.resolve();
+      },
+    });
+    expect(await executor.run(call('get_thing', '{"id":"a"}'))).toMatchObject({ ok: true });
+    expect(waits).toEqual([300]);
+
+    answers = [{ allowed: false, retryAfterMs: 60_000 }];
+    const refused = await executor.run(call('get_thing', '{"id":"a"}'));
+    expect(refused).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    expect(read.calls()).toBe(1);
   });
 });

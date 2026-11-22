@@ -6,6 +6,8 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -19,6 +21,7 @@ import { resumePoint, streamRunEvents } from '../events/event-stream.js';
 import type { SessionCaller } from '../sessions/sessions.service.js';
 import { ApprovalsService } from './approvals.service.js';
 import { DecideApprovalDto, ListApprovalsQuery, StartRunDto } from './runs.dto.js';
+import { RateLimiter } from './rate-limiter.js';
 import { RunsService } from './runs.service.js';
 
 /**
@@ -32,12 +35,29 @@ export class RunsController {
   constructor(
     private readonly runs: RunsService,
     private readonly events: EventLog,
+    private readonly rateLimiter: RateLimiter,
   ) {}
 
-  /** 202 Accepted: the run was saved and queued; follow it with GET /runs/:id/events. */
+  /**
+   * 202 Accepted: the run was saved and queued; follow it with GET /runs/:id/events.
+   * 429 with Retry-After (seconds) when the tenant has started too many runs this minute
+   * (Step 4.5, a token bucket per tenant in Redis). Nothing is saved or queued then.
+   */
   @Post()
   @HttpCode(202)
-  start(@CurrentSession() session: SessionCaller, @Body() dto: StartRunDto) {
+  async start(
+    @CurrentSession() session: SessionCaller,
+    @Body() dto: StartRunDto,
+    @Res({ passthrough: true }) res: ServerResponse,
+  ) {
+    const rate = await this.rateLimiter.take('runs', session.tenantId.toHexString());
+    if (!rate.allowed) {
+      res.setHeader('retry-after', String(Math.max(1, Math.ceil(rate.retryAfterMs / 1000))));
+      throw new HttpException(
+        'Too many runs started for this account; try again shortly.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
     return this.runs.start(session.tenantId, {
       specId: session.specId,
       message: dto.message,
