@@ -77,15 +77,26 @@ export class OpenAICompatibleProvider implements LLMProvider {
     yield* accumulator.finish();
   }
 
-  /** Builds the request fields shared by `generate` and `stream`: model, messages and tools. */
+  /**
+   * Builds the request fields shared by `generate` and `stream`: model, messages, tools and the
+   * output limit. Before -> after: configured 4096, request asks 900 -> `max_tokens: 900`.
+   */
   private toWireRequest(request: GenerateRequest) {
     const tools = request.tools ?? [];
+    const maxTokens = smallest(this.maxOutputTokens, request.maxOutputTokens);
     return {
       model: this.model,
       messages: toWireMessages(request.messages),
       // Some servers reject an empty tools array, so leave the field out instead.
       ...(tools.length > 0 && { tools: toWireTools(tools) }),
-      ...(this.maxOutputTokens !== undefined && { max_tokens: this.maxOutputTokens }),
+      ...(maxTokens !== undefined && { max_tokens: maxTokens }),
     };
   }
+}
+
+/** The smaller of two optional limits; undefined only when both are unset. */
+function smallest(a: number | undefined, b: number | undefined): number | undefined {
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return Math.min(a, b);
 }

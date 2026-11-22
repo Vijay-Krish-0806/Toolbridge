@@ -25,7 +25,8 @@ import {
 } from '../approval.js';
 import type { ChatMessage, ToolCall } from '../../llm/types.js';
 import type { AgentEvent, EmitEvent } from '../run-types.js';
-import { answerStopReason, emptyUsage, modelCallUsage } from '../run-types.js';
+import { nextCallAllowance } from '../budget.js';
+import { addUsage, answerStopReason, emptyUsage, modelCallUsage } from '../run-types.js';
 import { runToolCalls, selectToolMenu, streamModelTurn, toolResultMessages } from '../steps.js';
 import type { AgentContextValue, AgentStateUpdate, AgentStateValue } from './state.js';
 
@@ -78,6 +79,15 @@ export async function selectTools(
  * Node 2: one model call. Sends the conversation and menu, streams thinking and text as custom
  * events, and returns the reply. A reply with no tool calls is the answer, so it also sets
  * `stopReason` (`answer`, or `length` if the model ran out of tokens).
+ *
+ * Step 4.6, the token budget (see budget.ts), checked twice:
+ * - BEFORE the call: if the next prompt (at least as big as the last one) leaves no room for an
+ *   answer, the call is not made and the run stops with `token_budget`. Otherwise the call's
+ *   output is limited to what is left.
+ * - AFTER the call: if the reply is not a finished answer (it asks for tools, or was cut off) and
+ *   the follow-up call could not fit, the run stops with `token_budget` now. Its tools are NOT
+ *   run: their results would go to a model call that never happens, and a write nobody reports
+ *   back is worse than no write.
  * Before -> after: `{ iteration: 1, messages: [..3] }` ->
  * update `{ messages: [assistant reply], usage: { llmCalls: 1, ... }, iteration: 2 }`.
  */
@@ -85,8 +95,14 @@ export async function callModel(
   state: AgentStateValue,
   config: NodeConfig,
 ): Promise<AgentStateUpdate> {
-  const { llm } = contextOf(config);
+  const { llm, limits } = contextOf(config);
   const emit = emitterOf(config);
+  const allowance = nextCallAllowance(
+    state.usage,
+    limits.maxRunTokens,
+    state.usage.lastInputTokens,
+  );
+  if (allowance === null) return { stopReason: 'token_budget' };
   const iteration = state.iteration + 1;
 
   const started = performance.now();
@@ -98,18 +114,24 @@ export async function callModel(
       messages: state.messages,
       tools: state.tools,
       ...(config.signal && { signal: config.signal }),
+      ...(allowance !== undefined && { maxOutputTokens: allowance }),
     },
     emit,
   );
   emit({ type: 'llm-response', iteration, result, durationMs: performance.now() - started });
 
-  const update: AgentStateUpdate = {
-    messages: [result.message],
-    usage: modelCallUsage(result.usage),
-    iteration,
-  };
+  const used = modelCallUsage(result.usage);
+  const update: AgentStateUpdate = { messages: [result.message], usage: used, iteration };
+  const finished = result.message.toolCalls.length === 0 && result.finishReason !== 'length';
+  // The follow-up prompt holds this call's prompt and its reply, so it is at least their sum.
+  const followUp = nextCallAllowance(
+    addUsage(state.usage, used),
+    limits.maxRunTokens,
+    used.inputTokens + used.outputTokens,
+  );
+  if (!finished && followUp === null) update.stopReason = 'token_budget';
   // A text answer can come at any step: local models cannot be forced to use tools.
-  if (result.message.toolCalls.length === 0) update.stopReason = answerStopReason(result);
+  else if (result.message.toolCalls.length === 0) update.stopReason = answerStopReason(result);
   return update;
 }
 
@@ -222,12 +244,16 @@ export async function executeTools(
 }
 
 /**
- * Node 5: the single exit of the graph. Every path ends here, which gives later steps one place
- * to hook in (budgets in 4.6, the audit record in 4.10). Today it writes the answer: the text of
- * the last reply when the model answered, and an empty string when a limit cut the run short.
+ * Node 5: the single exit of the graph. Every path ends here. It writes the answer: the text of
+ * the last reply when the model answered, was cut off (`length`), or the token budget ran out
+ * (`token_budget`: whatever text the last reply had, possibly empty). An empty string when
+ * another limit cut the run short.
  */
 export function finalize(state: AgentStateValue): AgentStateUpdate {
-  const answered = state.stopReason === 'answer' || state.stopReason === 'length';
+  const answered =
+    state.stopReason === 'answer' ||
+    state.stopReason === 'length' ||
+    state.stopReason === 'token_budget';
   const last = state.messages.at(-1);
   return { answer: answered && last?.role === 'assistant' ? last.content : '' };
 }

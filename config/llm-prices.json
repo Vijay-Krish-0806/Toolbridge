@@ -1,0 +1,5 @@
+{
+  "models": {
+    "toolbridge-qwen3.5-4b-16k": { "inputUsdPerMTok": 0, "outputUsdPerMTok": 0 }
+  }
+}

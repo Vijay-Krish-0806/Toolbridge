@@ -1,9 +1,22 @@
-import { type LLMConfig, loadLLMConfig } from '@toolbridge/agent-core';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import {
+  type LLMConfig,
+  loadLLMConfig,
+  MIN_CALL_OUTPUT_TOKENS,
+  type ModelPrice,
+  parsePriceTable,
+  priceOf,
+} from '@toolbridge/agent-core';
 import { type EmbeddingConfig, loadEmbeddingConfig } from '@toolbridge/retrieval';
 import { z } from 'zod';
 
 /** The placeholder in .env.example; refused so a copied example never runs as a real key. */
 export const EXAMPLE_ADMIN_KEY = 'change-me-to-a-long-random-string-of-at-least-32-chars';
+
+/** The price table in the repo (config/llm-prices.json); the same path from src/ and dist/. */
+const DEFAULT_PRICE_FILE = resolve(import.meta.dirname, '../../../config/llm-prices.json');
 
 /** Comma-separated host names -> trimmed, lower-case list; empty string -> []. */
 const hostList = z
@@ -59,6 +72,17 @@ const envSchema = z.object({
    * Past it the leg is aborted and the run fails with "time limit" (Step 4.4a). Default 10 min.
    */
   RUN_LEG_TIMEOUT_MS: z.coerce.number().int().min(1000).default(600_000),
+  /**
+   * Most tokens (input plus output, over all its model calls) one run may use (Step 4.6). At the
+   * cap the run ends normally with stop reason `token_budget`. Default 60,000: about four model
+   * calls with a full 16K context window.
+   */
+  RUN_MAX_TOKENS: z.coerce.number().int().min(MIN_CALL_OUTPUT_TOKENS).default(60_000),
+  /**
+   * The model price table (Step 4.6): JSON `{ models: { <name>: { inputUsdPerMTok,
+   * outputUsdPerMTok } } }`. The model in LLM_MODEL must be listed, or startup fails.
+   */
+  LLM_PRICE_FILE: z.string().min(1).default(DEFAULT_PRICE_FILE),
   /** Legs one worker process runs at the same time. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
   /**
@@ -138,6 +162,8 @@ export type PlatformConfig = z.infer<typeof envSchema> & {
   embedding: EmbeddingConfig;
   /** The model agent runs use (LLM_* variables, validated by agent-core). */
   llm: LLMConfig;
+  /** That model's price, from LLM_PRICE_FILE: every usage record is costed with it. */
+  llmPrice: ModelPrice;
 };
 
 /** Validates environment variables once at startup, so a bad config fails fast with a clear message. */
@@ -146,9 +172,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PlatformConfig
   if (!result.success) {
     throw new Error(`Invalid platform configuration:\n${z.prettifyError(result.error)}`);
   }
+  const llm = loadLLMConfig(env);
   return {
     ...result.data,
     embedding: loadEmbeddingConfig(env),
-    llm: loadLLMConfig(env),
+    llm,
+    llmPrice: loadModelPrice(result.data.LLM_PRICE_FILE, llm.model),
   };
+}
+
+/**
+ * Reads the price table and returns the configured model's price. Throws (so startup fails)
+ * when the file is missing or invalid, or the model is not in it: an unpriced model must never
+ * be counted as free.
+ */
+function loadModelPrice(file: string, model: string): ModelPrice {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid platform configuration: LLM_PRICE_FILE ${file}: ${reason}`, {
+      cause: error,
+    });
+  }
+  return priceOf(parsePriceTable(raw), model);
 }

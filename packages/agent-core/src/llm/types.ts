@@ -52,6 +52,11 @@ export interface GenerateRequest {
   tools?: ToolDefinition[];
   /** Aborts the request (for example a run's time limit or a cancel, Step 4.4a). */
   signal?: AbortSignal;
+  /**
+   * Step 4.6: most tokens the model may write in THIS call. The adapter sends the smaller of
+   * this and its own configured limit, so a run's token budget can shrink a call, never grow it.
+   */
+  maxOutputTokens?: number;
 }
 
 /** Why the model stopped. Don't use it to detect tool calls: check `message.toolCalls` instead. */

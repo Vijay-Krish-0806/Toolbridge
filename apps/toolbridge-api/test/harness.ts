@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 import type { INestApplication, INestApplicationContext } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -84,6 +85,8 @@ export function testEnv(): Record<string, string | undefined> {
     // limit test sets its own.
     RATE_RUNS_PER_MINUTE: '10000',
     RATE_TOOL_CALLS_PER_SECOND: '10000',
+    // Prices the scripted model ("fake") as well as the local one, so workers start.
+    LLM_PRICE_FILE: fileURLToPath(new URL('./fixtures/llm-prices.json', import.meta.url)),
   };
 }
 

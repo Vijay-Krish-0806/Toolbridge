@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
+  type AgentEvent,
   type AgentRunOutcome,
   continueAgentRun,
   durableRunState,
@@ -12,7 +13,7 @@ import {
 import type { MongoSaver } from '@toolbridge/checkpoint-mongo';
 import { type Model, Types } from 'mongoose';
 
-import { AGENT_LLM } from '../common/core.module.js';
+import { AGENT_LLM, PLATFORM_CONFIG } from '../common/core.module.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type Approval, MODEL, type Run } from '../domain/models.js';
@@ -22,6 +23,8 @@ import { CHECKPOINTER } from '../platform.module.js';
 import type { RunJob } from '../runs/run-queue.js';
 import { RunToolsService } from '../runs/run-tools.js';
 import { SpecsService } from '../specs/specs.service.js';
+import type { PlatformConfig } from '../config.js';
+import { UsageLedger } from '../usage/usage-ledger.js';
 
 /**
  * Runs ONE leg of a run on a worker (Step 4.4a), and writes how it ended to the run record.
@@ -47,6 +50,8 @@ export class RunExecutor {
     private readonly specs: SpecsService,
     private readonly runTools: RunToolsService,
     private readonly events: EventLog,
+    private readonly usage: UsageLedger,
+    @Inject(PLATFORM_CONFIG) private readonly config: PlatformConfig,
   ) {}
 
   /**
@@ -82,18 +87,25 @@ export class RunExecutor {
     // The leg's progress goes to the event log; every event is written before the leg ends,
     // also when it throws, so a later run_finished never gets a smaller number than its text.
     const sink = new EventSink(this.events, tenantId, run._id);
+    // Every finished model call becomes a usage row (Step 4.6), also in a leg that later fails.
+    const meter = this.usage.meterFor(tenantId, run._id);
     const leg = {
       ...tools,
       llm: this.llm,
       checkpointer: this.checkpointer,
       runId: run._id,
       signal,
-      onEvent: sink.onEvent,
+      // The cap counts the run's checkpointed totals, so it spans every leg of the run.
+      limits: { maxRunTokens: this.config.RUN_MAX_TOKENS },
+      onEvent: (event: AgentEvent) => {
+        sink.onEvent(event);
+        meter.onEvent(event);
+      },
     };
     try {
       await this.runLeg(job, run, card, leg, sink);
     } finally {
-      await sink.flush();
+      await Promise.all([sink.flush(), meter.flush()]);
     }
   }
 

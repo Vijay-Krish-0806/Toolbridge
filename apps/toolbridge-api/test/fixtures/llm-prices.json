@@ -1,0 +1,6 @@
+{
+  "models": {
+    "fake": { "inputUsdPerMTok": 3, "outputUsdPerMTok": 15 },
+    "toolbridge-qwen3.5-4b-16k": { "inputUsdPerMTok": 0, "outputUsdPerMTok": 0 }
+  }
+}

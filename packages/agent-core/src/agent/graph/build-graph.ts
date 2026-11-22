@@ -1,7 +1,7 @@
 /**
  * Wires the nodes into a graph and compiles it.
  *
- *   START -> selectTools -> callModel --(answered?)-- yes ---------------------------> finalize -> END
+ *   START -> selectTools -> callModel --(answered, or budget?)-- yes -----------------> finalize -> END
  *                              ^             | no                                       ^
  *                              |             v                                          |
  *                              |       approvalGate --(rejected)--> callModel           |

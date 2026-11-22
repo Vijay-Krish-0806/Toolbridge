@@ -51,6 +51,20 @@ data: {"v":1,"runId":"3f2c…","seq":7,"at":"2026-11-22T10:00:00.000Z","type":"t
 
 These are not exposed: the model's reasoning, raw model results, tool results, and the tool menu.
 
+### Stop reasons
+
+`stopReason` on a `completed` run says why it ended:
+
+| `stopReason`      | Meaning                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `answer`          | The model answered. The normal end.                                                                                                                          |
+| `length`          | The answer was cut off by the per-call output limit. `answer` may be incomplete.                                                                             |
+| `token_budget`    | The run reached its token cap (Step 4.6). `answer` is whatever text the last reply had, possibly empty. Tools the model asked for in that reply did not run. |
+| `max_iterations`  | The run made its maximum number of model calls without answering. `answer` is empty.                                                                         |
+| `too_many_errors` | Too many failed tool calls in a row. `answer` is empty.                                                                                                      |
+
+New stop reasons can be added without a new version; show an unknown one as "stopped".
+
 ## Versioning
 
 - Adding an optional field or a new event type keeps `v: 1`. Clients must ignore types and fields they do not know.

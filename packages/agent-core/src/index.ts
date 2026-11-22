@@ -58,6 +58,14 @@ export type {
   AgentUsage,
   StopReason,
 } from './agent/run-types.js';
+export { MIN_CALL_OUTPUT_TOKENS } from './agent/budget.js';
+export {
+  costMicroUsd,
+  parsePriceTable,
+  priceOf,
+  type ModelPrice,
+  type PriceTable,
+} from './llm/pricing.js';
 export { STORE_AGENT_SYSTEM_PROMPT } from './agent/system-prompt.js';
 export type { SelectOptions, ToolSelection, ToolSelector } from './agent/tool-selector.js';
 export type { AccessDecision, Principal, RunAccess, ToolAuthorizer } from './agent/access.js';

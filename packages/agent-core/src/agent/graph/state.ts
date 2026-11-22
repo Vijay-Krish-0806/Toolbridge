@@ -26,7 +26,13 @@ import type { ToolExecutor } from '../../tools/executor.js';
 import type { ToolRegistry } from '../../tools/registry.js';
 import type { RunAccess } from '../access.js';
 import type { ApprovalPolicy } from '../approval.js';
-import { type AgentLimits, type AgentUsage, addUsage, emptyUsage } from '../run-types.js';
+import {
+  type AgentLimits,
+  type AgentUsage,
+  STOP_REASONS,
+  addUsage,
+  emptyUsage,
+} from '../run-types.js';
 import type { ToolSelector } from '../tool-selector.js';
 
 /**
@@ -66,7 +72,7 @@ export const AgentState = new StateSchema({
    * Set by the node that detects the run should end. The routing functions send the run to
    * `finalize` as soon as this is set. Empty while the run is still going.
    */
-  stopReason: z.enum(['answer', 'max_iterations', 'too_many_errors', 'length']).optional(),
+  stopReason: z.enum(STOP_REASONS).optional(),
 
   /** The final answer text, written by `finalize`. */
   answer: z.string().default(''),

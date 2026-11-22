@@ -37,6 +37,7 @@ import { SessionsService } from './sessions/sessions.service.js';
 import { SpecsController } from './specs/specs.controller.js';
 import { AdminTenantsController, TenantController } from './tenants/tenants.controller.js';
 import { TenantsService } from './tenants/tenants.service.js';
+import { UsageController } from './usage/usage.controller.js';
 
 /** Liveness check; the only route without a key. */
 @Controller('health')
@@ -96,6 +97,7 @@ export class AppModule {
         RunsController,
         ApprovalsController,
         AuditController,
+        UsageController,
         PoliciesController,
         SessionsController,
         ...(devOnly ? [DevLoginController] : []),

@@ -16,15 +16,30 @@ export interface AgentLimits {
   maxIterations: number;
   /** Failed tool results in a row before giving up. The retry cap for malformed calls. */
   maxConsecutiveToolErrors: number;
+  /**
+   * Step 4.6: most tokens (input plus output, summed over every model call) one run may use.
+   * Unset means no cap. Only the LangGraph engine enforces it; the raw loop is a frozen baseline.
+   */
+  maxRunTokens?: number;
 }
 
 export const DEFAULT_LIMITS: AgentLimits = { maxIterations: 8, maxConsecutiveToolErrors: 3 };
 
 /**
  * Why the run ended. `answer` is the normal end. The others mean the run was cut short and
- * `answer` may be empty.
+ * `answer` may be empty or partial. `token_budget` (Step 4.6): the run's token cap was reached.
  */
-export type StopReason = 'answer' | 'max_iterations' | 'too_many_errors' | 'length';
+export type StopReason =
+  'answer' | 'max_iterations' | 'too_many_errors' | 'length' | 'token_budget';
+
+/** Every stop reason, for schemas that must list them (the graph state). */
+export const STOP_REASONS = [
+  'answer',
+  'max_iterations',
+  'too_many_errors',
+  'length',
+  'token_budget',
+] as const satisfies readonly StopReason[];
 
 export interface AgentUsage {
   inputTokens: number;

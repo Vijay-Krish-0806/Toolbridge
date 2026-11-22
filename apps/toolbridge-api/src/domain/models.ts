@@ -255,6 +255,26 @@ export type AuditActor =
   { kind: 'user'; userId: string; role: string } | { kind: 'api_key'; keyId: string };
 
 /**
+ * One model call's token use and cost (Step 4.6, ADR 0042). INSERT-ONLY, like the audit log: the
+ * source of truth for what a tenant spent. One row per model call that finished, written by the
+ * worker as it happens, so a leg that is retried (at-least-once delivery) is charged for the calls
+ * it really made twice. The run's own totals (Run.usage, from its checkpoints) do not see those.
+ * The price is copied into the row, so a later price change never rewrites history.
+ */
+export interface UsageRecord {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  runId: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  /** Whole micro-dollars (1 USD = 1,000,000), never a float. */
+  costMicroUsd: number;
+  price: { inputUsdPerMTok: number; outputUsdPerMTok: number };
+  at: Date;
+}
+
+/**
  * One audit row (Step 4.10, ADR 0032). APPEND-ONLY: the platform only inserts and reads these.
  * A write gets two rows: `started` (saved before the write runs; if it cannot be saved, the
  * write does not run) and `finished`. A read or a refused call gets only `finished`.
@@ -435,6 +455,22 @@ auditSchema.index(
   { unique: true, partialFilterExpression: { phase: 'started', runId: { $type: 'string' } } },
 );
 
+const usageSchema = new Schema<UsageRecord>({
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  runId: { type: String, required: true },
+  model: { type: String, required: true },
+  inputTokens: { type: Number, required: true },
+  outputTokens: { type: Number, required: true },
+  costMicroUsd: { type: Number, required: true },
+  price: {
+    inputUsdPerMTok: { type: Number, required: true },
+    outputUsdPerMTok: { type: Number, required: true },
+  },
+  at: { type: Date, required: true },
+});
+usageSchema.index({ tenantId: 1, runId: 1 });
+usageSchema.index({ tenantId: 1, at: -1 });
+
 const policyVersionSchema = new Schema<PolicyVersion>({
   tenantId: { type: Schema.Types.ObjectId, required: true },
   specId: { type: Schema.Types.ObjectId, required: true },
@@ -492,6 +528,7 @@ export const MODEL = {
   Run: { name: 'Run', schema: runSchema },
   Approval: { name: 'Approval', schema: approvalSchema },
   AuditEntry: { name: 'AuditEntry', schema: auditSchema },
+  UsageRecord: { name: 'UsageRecord', schema: usageSchema },
   PolicyVersion: { name: 'PolicyVersion', schema: policyVersionSchema },
   RunEvent: { name: 'RunEvent', schema: runEventSchema },
   Session: { name: 'Session', schema: sessionSchema },

@@ -291,4 +291,6 @@ The scope is frozen as of 2026-11-22. New ideas go in this list, not into the st
 - Per-item approval decisions (approve some calls of a turn and reject others; Step 4.3 is all or nothing).
 - Pending-approval expiry: a waiting approval that nobody answers is rejected after a set time.
 - Approval for writes on the direct tool-call endpoint (`POST /specs/:id/tools/:name/call`, Step 2.6b): today a tenant API key can run a write there with no approval; Step 4.10 audits it with the key as the actor.
+- Markdown rendering in the chat widget (tables, lists, bold): today it shows the model's raw markdown, because it renders with `textContent` only. It must stay XSS-safe: parse to DOM nodes with no raw HTML allowed (no `innerHTML` with model output), and keep the widget free of heavy dependencies.
+- UI polish for the widget and host demo (Vijay has suggestions, to be collected).
 - Database-level append-only audit log: an insert-only MongoDB role for the platform user, or a hash chain, instead of append-only by code only (Step 4.10).
