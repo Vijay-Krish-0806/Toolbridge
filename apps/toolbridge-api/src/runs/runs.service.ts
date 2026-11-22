@@ -9,6 +9,7 @@ import type { AuditContext } from '../audit/audit-log.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type Approval, MODEL, type Run, type RunStatus } from '../domain/models.js';
+import { EventLog } from '../events/event-log.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { RunQueue } from './run-queue.js';
 import { RunToolsService } from './run-tools.js';
@@ -49,6 +50,7 @@ export class RunsService {
     private readonly specs: SpecsService,
     private readonly runTools: RunToolsService,
     private readonly queue: RunQueue,
+    private readonly events: EventLog,
   ) {}
 
   /**
@@ -78,6 +80,7 @@ export class RunsService {
       usage: null,
       error: null,
       cancelRequested: false,
+      eventSeq: 0,
       createdAt: now,
       updatedAt: now,
     } as Omit<Run, '_id' | 'tenantId'>);
@@ -154,6 +157,10 @@ export class RunsService {
           { runId, status: 'pending' },
           { status: 'cancelled', decidedAt: now },
         );
+        await this.events.append(tenantId, runId, {
+          type: 'run_finished',
+          data: { status: 'cancelled', error: 'Cancelled.' },
+        });
         return view(cancelled);
       }
     }

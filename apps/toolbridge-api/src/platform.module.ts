@@ -16,6 +16,7 @@ import { CoreModule, TOOL_INDEX } from './common/core.module.js';
 import type { PlatformConfig } from './config.js';
 import { ConnectionsService } from './connections/connections.service.js';
 import { MODEL } from './domain/models.js';
+import { EventLog } from './events/event-log.js';
 import { PoliciesService } from './policies/policies.service.js';
 import { RunQueue } from './runs/run-queue.js';
 import { RunToolsService } from './runs/run-tools.js';
@@ -51,6 +52,7 @@ export class PlatformModule {
       AuditLog,
       RunToolsService,
       RunQueue,
+      EventLog,
     ];
     return {
       module: PlatformModule,

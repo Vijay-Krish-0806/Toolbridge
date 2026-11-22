@@ -20,6 +20,8 @@ export interface Collection<T> {
   updateOne(filter: Filter, set: Filter): Promise<number>;
   /** Applies `$set` to one matching document atomically; returns it after the update, or null. */
   findOneAndUpdate(filter: Filter, set: Filter): Promise<T | null>;
+  /** Adds 1 to a numeric field of one matching document atomically; returns it after, or null. */
+  incrementOne(filter: Filter, field: string): Promise<T | null>;
   countDocuments(filter: Filter): Promise<number>;
   /** Returns how many documents were deleted (0 or 1). */
   deleteOne(filter: Filter): Promise<number>;
@@ -80,6 +82,16 @@ export class TenantScoped<T extends { tenantId: Types.ObjectId }> {
   findOneAndUpdate(filter: Filter, set: Filter): Promise<T | null> {
     if ('tenantId' in set) throw new TenantScopeError('tenantId cannot be changed.');
     return this.collection.findOneAndUpdate(this.scope(filter), set);
+  }
+
+  /**
+   * Adds 1 to `field` of one document of this tenant in one atomic operation and returns the
+   * document after it. Two callers can never get the same new value: a counter, for example
+   * the next event number of a run.
+   */
+  incrementOne(filter: Filter, field: string): Promise<T | null> {
+    if (field === 'tenantId') throw new TenantScopeError('tenantId cannot be changed.');
+    return this.collection.incrementOne(this.scope(filter), field);
   }
 
   /** Deletes one document of this tenant. */

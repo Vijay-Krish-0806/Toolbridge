@@ -16,6 +16,8 @@ import { AGENT_LLM } from '../common/core.module.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type Approval, MODEL, type Run } from '../domain/models.js';
+import { EventLog } from '../events/event-log.js';
+import { EventSink } from '../events/event-sink.js';
 import { CHECKPOINTER } from '../platform.module.js';
 import type { RunJob } from '../runs/run-queue.js';
 import { RunToolsService } from '../runs/run-tools.js';
@@ -44,6 +46,7 @@ export class RunExecutor {
     @Inject(CHECKPOINTER) private readonly checkpointer: MongoSaver,
     private readonly specs: SpecsService,
     private readonly runTools: RunToolsService,
+    private readonly events: EventLog,
   ) {}
 
   /**
@@ -71,14 +74,32 @@ export class RunExecutor {
         approval: { ...card, approverId: job.kind === 'resume' ? job.decision.approverId : '' },
       }),
     });
+    // The leg's progress goes to the event log; every event is written before the leg ends,
+    // also when it throws, so a later run_finished never gets a smaller number than its text.
+    const sink = new EventSink(this.events, tenantId, run._id);
     const leg = {
       ...tools,
       llm: this.llm,
       checkpointer: this.checkpointer,
       runId: run._id,
       signal,
+      onEvent: sink.onEvent,
     };
+    try {
+      await this.runLeg(job, run, card, leg, sink);
+    } finally {
+      await sink.flush();
+    }
+  }
 
+  /** Picks start, continue or resume from the checkpoint, then records the outcome. */
+  private async runLeg(
+    job: RunJob,
+    run: Run,
+    card: Approval | null,
+    leg: Omit<Parameters<typeof continueAgentRun>[0], never>,
+    sink: EventSink,
+  ): Promise<void> {
     const state = await durableRunState(this.checkpointer, run._id);
     let outcome: AgentRunOutcome;
     if (state.status === 'new') {
@@ -102,12 +123,12 @@ export class RunExecutor {
       // Already paused on another card, or already finished: an earlier attempt got this far.
       outcome = state;
     }
-    await this.record(tenantId, run._id, outcome);
+    await this.record(run.tenantId, run._id, outcome, sink);
   }
 
   /**
-   * Ends a run that is still `running` with a final status and reason. Conditional, so it never
-   * overwrites a run that already ended (for example cancelled while the leg was failing).
+   * Ends a run that is still `running` with a final status and reason, and writes its last
+   * event. Conditional, so it never overwrites (or announces twice) a run that already ended.
    */
   async end(
     tenantId: Types.ObjectId,
@@ -115,11 +136,16 @@ export class RunExecutor {
     status: 'failed' | 'cancelled',
     reason: string,
   ): Promise<void> {
-    await this.runs(tenantId).updateOne(
+    const changed = await this.runs(tenantId).updateOne(
       { _id: runId, status: 'running' },
       { status, error: reason, updatedAt: new Date() },
     );
+    if (changed === 0) return;
     this.logger.warn(`Run ${runId} ${status}: ${reason}`);
+    await this.events.append(tenantId, runId, {
+      type: 'run_finished',
+      data: { status, error: reason },
+    });
   }
 
   /**
@@ -131,6 +157,7 @@ export class RunExecutor {
     tenantId: Types.ObjectId,
     runId: string,
     outcome: AgentRunOutcome,
+    sink: EventSink,
   ): Promise<void> {
     const now = new Date();
     if (outcome.status === 'waiting_for_approval') {
@@ -149,17 +176,36 @@ export class RunExecutor {
           decidedAt: null,
           createdAt: now,
         }));
-      await this.runs(tenantId).updateOne(
+      const paused = await this.runs(tenantId).updateOne(
         { _id: runId, status: 'running' },
         { status: 'waiting_for_approval', approvalId: card._id, updatedAt: now },
       );
+      if (paused > 0) {
+        sink.push({
+          type: 'approval_required',
+          data: {
+            approvalId: card._id.toHexString(),
+            level: card.level,
+            calls: card.calls.map((c) => ({
+              callId: c.id,
+              tool: c.name,
+              arguments: c.arguments,
+              level: c.level,
+              reason: c.reason,
+            })),
+          },
+        });
+      }
       return;
     }
     const { answer, stopReason, usage } = outcome.result;
-    await this.runs(tenantId).updateOne(
+    const completed = await this.runs(tenantId).updateOne(
       { _id: runId, status: 'running' },
       { status: 'completed', answer, stopReason, usage, updatedAt: now },
     );
+    if (completed > 0) {
+      sink.push({ type: 'run_finished', data: { status: 'completed', answer, stopReason } });
+    }
   }
 
   private runs(tenantId: Types.ObjectId): TenantScoped<Run> {

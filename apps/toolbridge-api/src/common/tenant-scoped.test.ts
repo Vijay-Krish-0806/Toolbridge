@@ -34,6 +34,10 @@ function recordingCollection(): { collection: Collection<Doc>; filters: Filter[]
       filters.push(filter);
       return Promise.resolve(null);
     },
+    incrementOne: (filter) => {
+      filters.push(filter);
+      return Promise.resolve(null);
+    },
     countDocuments: (filter) => {
       filters.push(filter);
       return Promise.resolve(0);
@@ -66,7 +70,8 @@ describe('TenantScoped', () => {
     await scoped.countDocuments();
     await scoped.deleteOne({ name: 'shop' });
     await scoped.findOneAndUpdate({ name: 'shop' }, { name: 'store' });
-    expect(filters).toHaveLength(6);
+    await scoped.incrementOne({ name: 'shop' }, 'count');
+    expect(filters).toHaveLength(7);
     for (const filter of filters) expect(filter.tenantId).toEqual(TENANT);
   });
 

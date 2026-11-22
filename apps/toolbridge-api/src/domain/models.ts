@@ -143,6 +143,8 @@ export interface Run {
   error: string | null;
   /** Set by POST /runs/:id/cancel; the worker running the leg stops it (Step 4.4a). */
   cancelRequested: boolean;
+  /** The last event sequence number used; incremented atomically for each new event. */
+  eventSeq: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -193,6 +195,20 @@ export interface PolicyVersion {
   /** Who uploaded it: the tenant API key (no user identity on this API until Step 4.4b). */
   createdBy: { kind: 'api_key'; keyId: string };
   createdAt: Date;
+}
+
+/**
+ * One public event of a run (Step 4.4a, packages/run-events). `seq` is 1, 2, 3, … per run with
+ * no gaps, so a client that reconnects asks for "everything after seq N" and misses nothing.
+ */
+export interface RunEventRecord {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  runId: string;
+  seq: number;
+  type: string;
+  data: Record<string, unknown>;
+  at: Date;
 }
 
 /** Who a tool call was made for: a host user (agent runs), or a tenant API key (direct calls). */
@@ -324,6 +340,7 @@ const runSchema = new Schema<Run>({
   usage: { type: Schema.Types.Mixed, default: null },
   error: { type: String, default: null },
   cancelRequested: { type: Boolean, default: false },
+  eventSeq: { type: Number, default: 0 },
   createdAt: { type: Date, required: true },
   updatedAt: { type: Date, required: true },
 });
@@ -384,6 +401,17 @@ const policyVersionSchema = new Schema<PolicyVersion>({
 // Unique: two uploads racing for the same next version cannot both win.
 policyVersionSchema.index({ tenantId: 1, specId: 1, version: -1 }, { unique: true });
 
+const runEventSchema = new Schema<RunEventRecord>({
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  runId: { type: String, required: true },
+  seq: { type: Number, required: true },
+  type: { type: String, required: true },
+  data: { type: Schema.Types.Mixed, required: true },
+  at: { type: Date, required: true },
+});
+// Unique: one event per number; also serves "events of this run after seq N, in order".
+runEventSchema.index({ tenantId: 1, runId: 1, seq: 1 }, { unique: true });
+
 /** Model names and schemas in one list, shared by the Nest modules and index creation. */
 export const MODEL = {
   Tenant: { name: 'Tenant', schema: tenantSchema },
@@ -396,6 +424,7 @@ export const MODEL = {
   Approval: { name: 'Approval', schema: approvalSchema },
   AuditEntry: { name: 'AuditEntry', schema: auditSchema },
   PolicyVersion: { name: 'PolicyVersion', schema: policyVersionSchema },
+  RunEvent: { name: 'RunEvent', schema: runEventSchema },
 } as const;
 
 /**

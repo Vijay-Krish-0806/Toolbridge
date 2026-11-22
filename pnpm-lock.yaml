@@ -275,6 +275,9 @@ importers:
       '@toolbridge/retrieval':
         specifier: workspace:*
         version: link:../../packages/retrieval
+      '@toolbridge/run-events':
+        specifier: workspace:*
+        version: link:../../packages/run-events
       '@toolbridge/spec-compiler':
         specifier: workspace:*
         version: link:../../packages/spec-compiler
@@ -413,6 +416,12 @@ importers:
       mongodb:
         specifier: 7.8.0
         version: 7.8.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
+  packages/run-events:
+    dependencies:
       zod:
         specifier: 4.6.7
         version: 4.6.7

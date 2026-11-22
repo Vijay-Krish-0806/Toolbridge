@@ -26,6 +26,7 @@
     "@toolbridge/checkpoint-mongo": "workspace:*",
     "@toolbridge/policy": "workspace:*",
     "@toolbridge/retrieval": "workspace:*",
+    "@toolbridge/run-events": "workspace:*",
     "@toolbridge/spec-compiler": "workspace:*",
     "bullmq": "6.7.2",
     "class-transformer": "0.5.1",

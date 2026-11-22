@@ -11,7 +11,7 @@ import { Types } from 'mongoose';
 
 import { PLATFORM_CONFIG } from '../common/core.module.js';
 import type { PlatformConfig } from '../config.js';
-import { CANCEL_CHANNEL, redisOptions, RUN_QUEUE, type RunJob } from '../runs/run-queue.js';
+import { channel, redisOptions, RUN_QUEUE, type RunJob } from '../runs/run-queue.js';
 import { RunExecutor } from './run-executor.js';
 
 /** Why a leg was aborted by us (as opposed to a crash or a model error). */
@@ -51,7 +51,7 @@ export class RunWorker implements OnModuleInit, OnApplicationShutdown {
     // Cancel requests arrive on a pub/sub channel, because BullMQ's own cancelJob only reaches
     // jobs of the Worker object it is called on, not workers in other processes.
     this.subscriber = new Redis(redisOptions(this.config));
-    await this.subscriber.subscribe(CANCEL_CHANNEL);
+    await this.subscriber.subscribe(channel(this.config, 'run-cancel'));
     this.subscriber.on('message', (_channel: string, runId: string) => {
       this.active.get(runId)?.abort(new LegStopped('cancelled'));
     });

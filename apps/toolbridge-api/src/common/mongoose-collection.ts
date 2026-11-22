@@ -2,7 +2,7 @@
  * Adapts a Mongoose model to the small Collection interface that TenantScoped uses.
  * Keeping the interface small means the scoping rules can be tested without a database.
  */
-import type { Model, QueryFilter } from 'mongoose';
+import type { Model, QueryFilter, UpdateQuery } from 'mongoose';
 
 import type { Collection, Filter } from './tenant-scoped.js';
 
@@ -21,6 +21,13 @@ export function mongooseCollection<T>(model: Model<T>): Collection<T> {
     findOneAndUpdate: (filter, set) =>
       model
         .findOneAndUpdate(filterOf(filter), { $set: set }, { returnDocument: 'after' })
+        .lean<T>()
+        .exec(),
+    incrementOne: (filter, field) =>
+      model
+        .findOneAndUpdate(filterOf(filter), { $inc: { [field]: 1 } } as UpdateQuery<T>, {
+          returnDocument: 'after',
+        })
         .lean<T>()
         .exec(),
     countDocuments: (filter) => model.countDocuments(filterOf(filter)).exec(),
