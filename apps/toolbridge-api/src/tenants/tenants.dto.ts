@@ -1,4 +1,6 @@
-import { IsString, Length } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsString, Length } from 'class-validator';
+
+import { MAX_ORIGINS } from '../auth/origins.js';
 
 export class CreateTenantDto {
   @IsString()
@@ -11,4 +13,13 @@ export class CreateApiKeyDto {
   @IsString()
   @Length(1, 80)
   label!: string;
+}
+
+/** PUT /tenant/origins: the browser origins allowed to use this tenant's session tokens. */
+export class SetOriginsDto {
+  @IsArray()
+  @ArrayMaxSize(MAX_ORIGINS)
+  @IsString({ each: true })
+  @Length(1, 200, { each: true })
+  origins!: string[];
 }

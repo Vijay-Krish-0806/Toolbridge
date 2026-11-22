@@ -74,6 +74,7 @@ export function testEnv(): Record<string, string | undefined> {
     PLATFORM_MASTER_KEY_VERSION: 'v1',
     PLATFORM_PREVIOUS_MASTER_KEYS: '',
     PLATFORM_SESSION_KEY: SESSION_KEY,
+    PLATFORM_ENV: 'test',
     // One queue per test process: test files never take each other's jobs. Kept across a
     // restart inside the same file, as a real deployment keeps its prefix.
     RUN_QUEUE_PREFIX: `e2e-${String(process.pid)}`,

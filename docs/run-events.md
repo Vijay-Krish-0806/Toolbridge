@@ -6,15 +6,16 @@ The public event stream of a ToolBridge agent run. The schema lives in `packages
 
 ```
 GET /runs/:runId/events
-Authorization: Bearer <key>
+Authorization: Bearer <session token>
 Last-Event-ID: <seq>        (optional: resume after this event)
 ```
 
 - The response is Server-Sent Events (`text/event-stream`).
 - Send the key in the `Authorization` header with `fetch`. Never put a token in the URL. The browser's `EventSource` cannot set headers, so use `fetch` and read the body as a stream.
-- Until Step 4.4b the key is the tenant API key. From 4.4b it is a short-lived session token.
+- The token is a short-lived session token (Step 4.4b). The host's backend mints it with `POST /sessions` and its tenant API key, then gives it to the page. A tenant API key is refused on this endpoint, and is refused from any browser.
+- From a browser, the page's origin must be one of the tenant's allowed origins (`PUT /tenant/origins`). The response then carries `Access-Control-Allow-Origin`.
 - `?after=<seq>` does the same as `Last-Event-ID`.
-- Another tenant's run returns 404.
+- Another user's or another tenant's run returns 404.
 - The server sends a comment line (`: ping`) every 15 s, so proxies keep the connection open.
 - The stream closes after `run_finished`.
 - A run waiting for approval keeps its stream open, so a client may disconnect and come back later.

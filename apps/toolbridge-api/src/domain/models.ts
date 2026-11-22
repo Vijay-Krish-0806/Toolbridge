@@ -12,6 +12,11 @@ import type { EncryptedSecret } from '../crypto/envelope.js';
 export interface Tenant {
   _id: Types.ObjectId;
   name: string;
+  /**
+   * Browser origins allowed to call the run API with this tenant's session tokens (Step 4.4b),
+   * for example the host app's web address. Empty: no browser access at all.
+   */
+  allowedOrigins: string[];
   createdAt: Date;
 }
 
@@ -273,8 +278,11 @@ export interface AuditEntry {
 
 const tenantSchema = new Schema<Tenant>({
   name: { type: String, required: true },
+  allowedOrigins: { type: [String], default: [] },
   createdAt: { type: Date, required: true },
 });
+// Multikey index: "does any tenant allow this origin?" (CORS preflight, which has no token).
+tenantSchema.index({ allowedOrigins: 1 });
 
 const apiKeySchema = new Schema<ApiKey>({
   _id: { type: String, required: true },

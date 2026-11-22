@@ -11,7 +11,7 @@ export interface Caller {
 
 /** The only request fields the guard needs, so we do not depend on Express's types. */
 export interface AuthedRequest {
-  headers: { authorization?: string };
+  headers: { authorization?: string; origin?: string };
   /** Set for tenant API-key requests (the host's backend). */
   caller?: Caller;
   /** Set for session-token requests (a host user, Step 4.4b). */

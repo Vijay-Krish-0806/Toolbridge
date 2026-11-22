@@ -1,7 +1,7 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
 
 import { AdminOnly, CurrentCaller, type Caller } from '../auth/auth.decorators.js';
-import { CreateApiKeyDto, CreateTenantDto } from './tenants.dto.js';
+import { CreateApiKeyDto, CreateTenantDto, SetOriginsDto } from './tenants.dto.js';
 import { type ApiKeyView, TenantsService } from './tenants.service.js';
 
 /** Platform administration: creating tenants. Admin key only. */
@@ -26,6 +26,12 @@ export class TenantController {
   @Get('me')
   me(@CurrentCaller() caller: Caller) {
     return this.tenants.get(caller.tenantId);
+  }
+
+  /** The browser origins (host web apps) allowed to use this tenant's session tokens. */
+  @Put('tenant/origins')
+  setOrigins(@CurrentCaller() caller: Caller, @Body() dto: SetOriginsDto) {
+    return this.tenants.setOrigins(caller.tenantId, dto.origins);
   }
 
   @Get('api-keys')

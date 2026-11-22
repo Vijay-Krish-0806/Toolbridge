@@ -77,7 +77,7 @@ describe('keys', () => {
 
   it('identifies the caller only from its key', async () => {
     const me = body<{ id: string; name: string }>(await as(alice.key).get('/me').expect(200));
-    expect(me).toEqual({ id: alice.id, name: 'Alice Shop' });
+    expect(me).toEqual({ id: alice.id, name: 'Alice Shop', allowedOrigins: [] });
   });
 });
 

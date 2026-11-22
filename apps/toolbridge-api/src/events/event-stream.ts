@@ -1,4 +1,3 @@
-import { once } from 'node:events';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import type { RunEvent } from '@toolbridge/run-events';
@@ -49,9 +48,16 @@ export async function streamRunEvents(
 
   // Set in a callback, so the loop asks a function each time instead of trusting a narrowed value.
   let clientGone = false;
-  const gone = once(req, 'close').then(() => {
-    clientGone = true;
+  // A plain listener, not events.once(): once() REJECTS when the socket emits 'error' (a client
+  // that disconnects mid-stream can, with ECONNRESET), and an unhandled rejection would stop the
+  // whole process. Here a disconnect only ever resolves.
+  const gone = new Promise<void>((resolve) => {
+    req.once('close', () => {
+      clientGone = true;
+      resolve();
+    });
   });
+  req.on('error', () => undefined); // a reset connection is a normal way for a client to leave
   const isGone = () => clientGone;
   let wake: (() => void) | undefined;
   const unsubscribe = await log.subscribe(runId, () => wake?.());
@@ -61,7 +67,9 @@ export async function streamRunEvents(
 
   /** Writes one chunk, waiting for 'drain' (or the client leaving) when the buffer is full. */
   const write = async (chunk: string): Promise<void> => {
-    if (!res.write(chunk)) await Promise.race([once(res, 'drain'), gone]);
+    if (!res.write(chunk)) {
+      await Promise.race([new Promise<void>((resolve) => res.once('drain', resolve)), gone]);
+    }
   };
 
   let cursor = after;

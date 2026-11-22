@@ -16,6 +16,7 @@ import type { Connection } from 'mongoose';
 
 import { AuditController } from './audit/audit.controller.js';
 import { Public } from './auth/auth.decorators.js';
+import { ApiKeyVerifier } from './auth/api-key-verifier.js';
 import { PlatformAuthGuard } from './auth/platform-auth.guard.js';
 import { OUTBOUND_HTTP, TOOL_INDEX } from './common/core.module.js';
 import { CallsService } from './connections/calls.service.js';
@@ -24,6 +25,7 @@ import {
   ConnectionsController,
 } from './connections/connections.controller.js';
 import type { PlatformConfig } from './config.js';
+import { DevLoginController, DevLoginNotice } from './dev/dev-login.controller.js';
 import { createIndexes } from './domain/models.js';
 import { PlatformModule } from './platform.module.js';
 import { PoliciesController } from './policies/policies.controller.js';
@@ -78,6 +80,9 @@ export class Lifecycle implements OnModuleInit, OnApplicationShutdown {
 export class AppModule {
   /** Built from an already-validated config, so nothing below reads process.env directly. */
   static register(config: PlatformConfig): DynamicModule {
+    // The dev login is not switched off by a check at request time: outside development its
+    // controller is simply not part of the app, so its routes do not exist (404).
+    const devOnly = config.PLATFORM_ENV === 'development';
     return {
       module: AppModule,
       imports: [PlatformModule.register(config)],
@@ -93,6 +98,7 @@ export class AppModule {
         AuditController,
         PoliciesController,
         SessionsController,
+        ...(devOnly ? [DevLoginController] : []),
       ],
       providers: [
         // Global: every route needs a key unless it is marked @Public().
@@ -102,6 +108,8 @@ export class AppModule {
         RunsService,
         ApprovalsService,
         SessionsService,
+        ApiKeyVerifier,
+        ...(devOnly ? [DevLoginNotice] : []),
         Lifecycle,
       ],
     };

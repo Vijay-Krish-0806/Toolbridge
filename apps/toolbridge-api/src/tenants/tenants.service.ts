@@ -1,8 +1,14 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model, Types } from 'mongoose';
 
 import { generateApiKey } from '../auth/api-key.js';
+import { normalizeOrigin } from '../auth/origins.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type ApiKey, MODEL, type Tenant } from '../domain/models.js';
@@ -33,10 +39,49 @@ export class TenantsService {
   }
 
   /** The calling tenant's own record. */
-  async get(tenantId: Types.ObjectId): Promise<{ id: string; name: string }> {
+  async get(
+    tenantId: Types.ObjectId,
+  ): Promise<{ id: string; name: string; allowedOrigins: string[] }> {
     const tenant = await this.tenants.findById(tenantId).lean<Tenant>().exec();
     if (!tenant) throw new NotFoundException('Tenant not found.');
-    return { id: tenant._id.toHexString(), name: tenant.name };
+    return {
+      id: tenant._id.toHexString(),
+      name: tenant.name,
+      allowedOrigins: tenant.allowedOrigins,
+    };
+  }
+
+  /**
+   * Replaces the tenant's browser origins (Step 4.4b). Each must be a bare http(s) origin; a
+   * path, a wildcard or anything else is refused (400), never "fixed" silently.
+   * Before -> after: `['https://Shop.Example']` -> `{ allowedOrigins: ['https://shop.example'] }`.
+   */
+  async setOrigins(
+    tenantId: Types.ObjectId,
+    origins: string[],
+  ): Promise<{ allowedOrigins: string[] }> {
+    const normalized = origins.map((value) => {
+      const origin = normalizeOrigin(value);
+      if (!origin) {
+        throw new BadRequestException(
+          `"${value}" is not an origin; use scheme, host and port only, like https://shop.example.`,
+        );
+      }
+      return origin;
+    });
+    const allowedOrigins = [...new Set(normalized)];
+    await this.tenants.updateOne({ _id: tenantId }, { $set: { allowedOrigins } }).exec();
+    return { allowedOrigins };
+  }
+
+  /** True when any tenant allows `origin` (a CORS preflight carries no token to say which). */
+  async anyTenantAllows(origin: string): Promise<boolean> {
+    return (await this.tenants.exists({ allowedOrigins: origin }).exec()) !== null;
+  }
+
+  /** True when this tenant allows `origin`. */
+  async tenantAllows(tenantId: Types.ObjectId, origin: string): Promise<boolean> {
+    return (await this.tenants.exists({ _id: tenantId, allowedOrigins: origin }).exec()) !== null;
   }
 
   /** Creates another key for the tenant (a tenant can hold several, for rotation). Returned once. */

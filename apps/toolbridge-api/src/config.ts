@@ -40,6 +40,12 @@ const envSchema = z.object({
   /** The platform's own database, separate from the host app's. */
   PLATFORM_MONGO_DB: z.string().min(1).default('toolbridge'),
   PLATFORM_PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
+  /**
+   * Where this process runs (Step 4.4b). Only `development` turns on the dev login page, which
+   * accepts a tenant API key in a browser form. The default is `production`, so forgetting to set
+   * it can never switch the page on.
+   */
+  PLATFORM_ENV: z.enum(['development', 'test', 'production']).default('production'),
   /** Redis for the run queue (Step 4.4a). Local Docker publishes it on 127.0.0.1 only. */
   REDIS_HOST: z.string().min(1).default('127.0.0.1'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65_535).default(6379),
