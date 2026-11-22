@@ -8,6 +8,7 @@ import type { ChatMessage, GenerateResult, ToolCall, Usage } from '../llm/types.
 import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
 import type { RunAccess } from './access.js';
+import type { ApprovalPolicy } from './approval.js';
 import type { ToolSelection, ToolSelector } from './tool-selector.js';
 
 export interface AgentLimits {
@@ -69,6 +70,12 @@ export interface AgentRunInput {
    * Without it, there is no access control in the agent (tests and local scripts).
    */
   access?: RunAccess;
+  /**
+   * Step 4.3: rules for which writes wait for a person. Only the LangGraph engine supports it,
+   * and only with a checkpointer (a paused run must be saved somewhere). Without it, writes run
+   * without approval (tests and local scripts).
+   */
+  approvals?: ApprovalPolicy;
 }
 
 export interface AgentRunResult {

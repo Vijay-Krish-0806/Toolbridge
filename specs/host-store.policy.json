@@ -35,5 +35,24 @@
         "knowledge_search"
       ]
     }
+  },
+  "approvals": {
+    "default": "required",
+    "rules": [
+      {
+        "tools": ["orders_update_notes"],
+        "approval": "none"
+      },
+      {
+        "tools": ["refunds_request"],
+        "arg": "amountCents",
+        "above": 10000,
+        "approval": "high"
+      },
+      {
+        "tools": ["refunds_approve", "orders_cancel", "products_bulk_price_update"],
+        "approval": "high"
+      }
+    ]
   }
 }

@@ -25,6 +25,7 @@ import type { ChatMessage, ToolDefinition } from '../../llm/types.js';
 import type { ToolExecutor } from '../../tools/executor.js';
 import type { ToolRegistry } from '../../tools/registry.js';
 import type { RunAccess } from '../access.js';
+import type { ApprovalPolicy } from '../approval.js';
 import { type AgentLimits, type AgentUsage, addUsage, emptyUsage } from '../run-types.js';
 import type { ToolSelector } from '../tool-selector.js';
 
@@ -69,6 +70,12 @@ export const AgentState = new StateSchema({
 
   /** The final answer text, written by `finalize`. */
   answer: z.string().default(''),
+
+  /**
+   * What `approvalGate` decided for the latest model turn (Step 4.3). The router after the gate
+   * reads it: `approved` or `not_needed` -> run the tools; `rejected` -> back to the model.
+   */
+  approvalOutcome: z.enum(['not_needed', 'approved', 'rejected']).optional(),
 });
 
 /** The full state as nodes see it, inferred from the schema above. */
@@ -89,6 +96,8 @@ export const AgentContext = z.object({
   limits: z.custom<AgentLimits>(),
   /** Who is asking and the rules for them (Step 4.2). Missing means no access control. */
   access: z.custom<RunAccess>().optional(),
+  /** Which writes wait for a person (Step 4.3). Missing means no approvals. */
+  approvals: z.custom<ApprovalPolicy>().optional(),
 });
 
 export type AgentContextValue = z.infer<typeof AgentContext>;

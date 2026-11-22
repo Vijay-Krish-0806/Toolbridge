@@ -51,6 +51,9 @@ jobs:
       - run: pnpm test:e2e
       # Platform API: tenant isolation, spec lifecycle, limits and SSRF, on its own e2e database.
       - run: pnpm test:e2e:platform
+      # Checkpointer (Step 4.3): LangGraph's official conformance suite on MongoSaver, plus the
+      # required approval test (no write before approval, no second run after a restart).
+      - run: pnpm test:e2e:checkpoint
       - if: failure()
         run: cat host.log
       - if: always()

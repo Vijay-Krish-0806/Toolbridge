@@ -1,6 +1,6 @@
 # ADR-0028: Delegated user token expiring while a run waits for approval
 
-- **Status:** Proposed (options recorded; not implemented)
+- **Status:** Accepted (option 0; validated in Step 4.4c)
 - **Date:** 2026-11-22
 
 ## Context
@@ -16,9 +16,16 @@ Step 4.3 will pause a run before a risky write and resume it after a person appr
 
 ## Decision
 
-Not decided. To be chosen in Step 4.3, evaluating option 0 first and comparing it with options 1 and 2. No host refresh flow will be built for now, which limits option 1. Whatever is chosen, two rules apply: the policy check runs again on resume, and the audit record says which credential performed the write.
+**Option 0: an approved write runs under the approver's fresh delegated identity.** Decided in Step 4.3 (2026-11-22); built and validated in Step 4.4c, because until then every run uses the service credential.
+
+- The approver's own host token is captured when they approve (it is minutes old, so it has not expired) and is used for the approved batch only.
+- The audit record names both the requester and the approver, and the credential that performed each write (Step 4.10).
+- If the approver lacks the host permission for the action, the write fails safely at the host (for example HTTP 403). Nothing is retried under another identity; the run reports the failure to the model and the user.
+- Two rules apply whatever happens: ToolBridge's policy check (ADR 0026) runs again when the batch executes, and an expired requester token is never refreshed silently.
+- Options 1 and 3 are not chosen: there will be no host refresh flow for now, and re-authentication adds a second wait. Option 2 is not chosen: the host would see the service account instead of a person.
 
 ## Consequences
 
-- Choosing 1 or 3 needs host cooperation; choosing 2 needs per-tenant opt-in and clear audit fields; choosing 0 needs approvers to hold the permission and an audit record with both people.
+- **Positive:** no token-expiry problem on approval; no host changes; the host enforces the approver's permissions on the write.
+- **Negative:** at the host, the write is attributed to the approver, not the requester; approvers must hold the permission for the actions they approve; reads after the write still need the requester's identity, or the run ends at the write. The audit log is the record of who asked.
 - Related: the 4.3 rule that the user who triggered a high-risk action cannot approve it (ADR 0026 follow-ups).

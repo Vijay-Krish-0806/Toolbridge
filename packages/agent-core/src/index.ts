@@ -17,7 +17,22 @@ export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/
 export { HostApiClient, type HostApiOptions } from './host-api/client.js';
 export { createHostStoreTools } from './host-api/tools.js';
 export { runAgent } from './agent/loop.js';
-export { runAgentGraph } from './agent/graph/run-graph.js';
+export {
+  resumeAgentRun,
+  runAgentGraph,
+  startAgentRun,
+  type AgentRunOutcome,
+  type DurableRunInput,
+  type ResumeRunInput,
+} from './agent/graph/run-graph.js';
+export {
+  approvalDecisionSchema,
+  type ApprovalDecision,
+  type ApprovalLevel,
+  type ApprovalPolicy,
+  type ApprovalRequest,
+  type PendingCall,
+} from './agent/approval.js';
 export { ENGINES, parseEngineName, type AgentEngine, type EngineName } from './agent/engines.js';
 export type {
   AgentEvent,

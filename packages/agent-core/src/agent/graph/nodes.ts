@@ -15,8 +15,15 @@
  * - `config.writer`: pushes a CUSTOM stream event to whoever is reading `graph.stream(...)` with
  *   `streamMode: "custom"`. We use it for progress events (thinking text, tool start/end).
  */
-import type { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { type LangGraphRunnableConfig, interrupt } from '@langchain/langgraph';
 
+import {
+  type ApprovalDecision,
+  type ApprovalRequest,
+  type CallToCheck,
+  approvalDecisionSchema,
+} from '../approval.js';
+import type { ChatMessage, ToolCall } from '../../llm/types.js';
 import type { AgentEvent, EmitEvent } from '../run-types.js';
 import { answerStopReason, emptyUsage, modelCallUsage } from '../run-types.js';
 import { runToolCalls, selectToolMenu, streamModelTurn, toolResultMessages } from '../steps.js';
@@ -29,6 +36,7 @@ type NodeConfig = LangGraphRunnableConfig<AgentContextValue>;
 export const NODE = {
   selectTools: 'selectTools',
   callModel: 'callModel',
+  approvalGate: 'approvalGate',
   executeTools: 'executeTools',
   finalize: 'finalize',
 } as const;
@@ -96,7 +104,65 @@ export async function callModel(
 }
 
 /**
- * Node 3: runs the tool calls from the latest model reply and appends one `tool` message per
+ * Node 3 (Step 4.3): the approval gate, between the model's reply and running its tools.
+ *
+ * WHY THIS IS ITS OWN NODE, AND WHY IT HAS NO SIDE EFFECTS: `interrupt()` pauses the run and
+ * saves it in the checkpointer. When a person answers, LangGraph RESUMES BY RE-RUNNING THIS NODE
+ * FROM ITS FIRST LINE (LangGraph.js interrupts docs); this time `interrupt()` returns the answer
+ * instead of pausing. So everything before `interrupt()` runs twice. This node only reads state
+ * and computes; it writes nothing anywhere. The writes happen in `executeTools`, which runs only
+ * after this node has finished with an approval. (Saving the approval record is the run
+ * service's job, outside the graph, when it sees the pause.)
+ *
+ * All or nothing: one card for the whole turn. Approved -> every call runs. Rejected -> none
+ * runs, and each call gets a "not run" tool message so the model can tell the user.
+ * Defense in depth: for a `high` batch the approver must differ from the requester. The API
+ * checks it first (session b); this node checks again, and a violation counts as a rejection.
+ */
+export function approvalGate(state: AgentStateValue, config: NodeConfig): AgentStateUpdate {
+  const { approvals, registry, access, limits } = contextOf(config);
+  const calls = lastToolCalls(state);
+  if (!approvals) return { approvalOutcome: 'not_needed' };
+
+  const checks: CallToCheck[] = calls.map((call) => ({
+    name: call.name,
+    // An unknown tool is treated as a write: the strictest choice. It will not run anyway.
+    safety: registry.get(call.name)?.safety ?? 'write',
+    args: parseArgs(call.arguments),
+  }));
+  const batch = approvals.evaluate(checks);
+  if (batch.level === 'none') return { approvalOutcome: 'not_needed' };
+
+  const request: ApprovalRequest = {
+    level: batch.level,
+    requesterId: access?.principal.userId ?? '',
+    calls: calls.map((call, i) => ({
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+      level: batch.calls[i]?.level ?? 'required',
+      reason: batch.calls[i]?.reason ?? '',
+    })),
+  };
+  // First pass: pauses the run here. On resume: returns the person's answer.
+  const answer: unknown = interrupt(request);
+  const refusal = refusalOf(request, answer);
+  if (!refusal) return { approvalOutcome: 'approved' };
+
+  const update: AgentStateUpdate = {
+    approvalOutcome: 'rejected',
+    messages: calls.map((call): ChatMessage => ({
+      role: 'tool',
+      toolCallId: call.id,
+      content: refusal,
+    })),
+  };
+  if (state.iteration >= limits.maxIterations) update.stopReason = 'max_iterations';
+  return update;
+}
+
+/**
+ * Node 4: runs the tool calls from the latest model reply and appends one `tool` message per
  * call. Then it checks the two limits; hitting one sets `stopReason`:
  * - too many failed results in a row -> `too_many_errors` (checked first, like the raw loop),
  * - the model-call budget is used up -> `max_iterations`.
@@ -108,8 +174,7 @@ export async function executeTools(
   config: NodeConfig,
 ): Promise<AgentStateUpdate> {
   const { registry, executor, limits, access } = contextOf(config);
-  const last = state.messages.at(-1);
-  const calls = last?.role === 'assistant' ? last.toolCalls : [];
+  const calls = lastToolCalls(state);
   const offered = new Set(state.tools.map((tool) => tool.name));
 
   const results = await runToolCalls(
@@ -136,7 +201,7 @@ export async function executeTools(
 }
 
 /**
- * Node 4: the single exit of the graph. Every path ends here, which gives later steps one place
+ * Node 5: the single exit of the graph. Every path ends here, which gives later steps one place
  * to hook in (budgets in 4.6, the audit record in 4.10). Today it writes the answer: the text of
  * the last reply when the model answered, and an empty string when a limit cut the run short.
  */
@@ -147,14 +212,72 @@ export function finalize(state: AgentStateValue): AgentStateUpdate {
 }
 
 /**
- * Router after `callModel`: finish if the model answered, otherwise run its tool calls.
- * Returns a node name; LangGraph runs that node next.
+ * Router after `callModel`: finish if the model answered, otherwise check its tool calls for
+ * approval. Returns a node name; LangGraph runs that node next.
  */
-export function routeAfterModel(state: AgentStateValue): 'executeTools' | 'finalize' {
-  return state.stopReason ? NODE.finalize : NODE.executeTools;
+export function routeAfterModel(state: AgentStateValue): 'approvalGate' | 'finalize' {
+  return state.stopReason ? NODE.finalize : NODE.approvalGate;
+}
+
+/**
+ * Router after `approvalGate`: approved (or nothing to approve) -> run the tools; rejected -> back
+ * to the model with the "not run" messages; a limit hit while rejected -> finish.
+ */
+export function routeAfterApproval(
+  state: AgentStateValue,
+): 'executeTools' | 'callModel' | 'finalize' {
+  if (state.stopReason) return NODE.finalize;
+  return state.approvalOutcome === 'rejected' ? NODE.callModel : NODE.executeTools;
 }
 
 /** Router after `executeTools`: finish if a limit was hit, otherwise ask the model again. */
 export function routeAfterTools(state: AgentStateValue): 'callModel' | 'finalize' {
   return state.stopReason ? NODE.finalize : NODE.callModel;
+}
+
+/** The tool calls of the latest model reply (empty if the last message is not an assistant reply). */
+function lastToolCalls(state: AgentStateValue): ToolCall[] {
+  const last = state.messages.at(-1);
+  return last?.role === 'assistant' ? last.toolCalls : [];
+}
+
+/**
+ * Parses a call's raw arguments for the approval rules. Bad JSON gives `{}`: threshold rules then
+ * do not match and the call falls back to the stricter default, and the executor rejects the
+ * call later anyway.
+ * Before -> after: `'{"amountCents":500}'` -> `{ amountCents: 500 }`; `'oops'` -> `{}`.
+ */
+function parseArgs(raw: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(raw);
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Checks the person's answer. Returns undefined when the batch may run, or the "not run" text to
+ * give the model. Fails closed: a malformed answer, a rejection, a self-approval of a `high`
+ * batch, or a `high` batch without a known requester are all refusals.
+ * Before -> after: `{ decision: 'approved', approverId: 'u2' }` (requester u1, high) -> undefined;
+ * `{ decision: 'approved', approverId: 'u1' }` (requester u1, high) ->
+ * `'Not run: a high-risk action cannot be approved by the person who requested it.'`.
+ */
+function refusalOf(request: ApprovalRequest, answer: unknown): string | undefined {
+  const parsed = approvalDecisionSchema.safeParse(answer);
+  if (!parsed.success) return 'Not run: the approval answer was not valid.';
+  const decision: ApprovalDecision = parsed.data;
+  if (decision.decision === 'rejected') {
+    return `Not run: rejected by ${decision.approverId}${decision.reason ? `: ${decision.reason}` : '.'}`;
+  }
+  if (request.level === 'high') {
+    if (!request.requesterId) return 'Not run: a high-risk action needs a known requester.';
+    if (decision.approverId === request.requesterId) {
+      return 'Not run: a high-risk action cannot be approved by the person who requested it.';
+    }
+  }
+  return undefined;
 }

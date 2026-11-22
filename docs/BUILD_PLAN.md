@@ -288,3 +288,5 @@ The scope is frozen as of 2026-11-22. New ideas go in this list, not into the st
 - Real SSO and user management instead of host-minted session tokens only.
 - A refresh-token flow in the host app for long-running delegated runs.
 - Checkpoint expiry (TTL): checkpoints and run records contain customer data from tool results.
+- Per-item approval decisions (approve some calls of a turn and reject others; Step 4.3 is all or nothing).
+- Pending-approval expiry: a waiting approval that nobody answers is rejected after a set time.

@@ -24,6 +24,9 @@ import { runToolCalls, selectToolMenu, streamModelTurn, toolResultMessages } fro
  * consecutive errors or the iteration limit stops the loop early.
  */
 export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
+  // The raw loop is a frozen baseline (ADR 0025) and cannot pause. Ignoring approval rules would
+  // run writes nobody approved, so refuse instead.
+  if (input.approvals) throw new Error('The raw loop does not support approvals; use the graph.');
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const emit = input.onEvent ?? (() => undefined);
   const messages = [...input.messages];
