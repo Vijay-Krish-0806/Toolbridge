@@ -62,6 +62,14 @@ export interface ToolExecutorOptions {
    * `credential_unavailable`. Unset: tools use the credential they were created with.
    */
   credentialFor?: (call: ToolCall) => Promise<AuthProvider | undefined>;
+  /**
+   * Step 4.5: the idempotency key of a WRITE call, when the API supports keys. It must come from
+   * durable state (for example run id, call id and arguments), so a retried attempt or a worker
+   * that takes the run over sends the same key and the API performs the write once. With a key,
+   * a write may be retried on a retryable error, and a write that had already started is sent
+   * again (the API replays its stored answer) instead of being refused as `outcome_unknown`.
+   */
+  idempotencyKeyFor?: (call: ToolCall) => string | undefined;
 }
 
 /** Per-call options for `ToolExecutor.run`. */
@@ -84,6 +92,7 @@ export class ToolExecutor {
   private readonly audit: ToolAuditor | undefined;
   private readonly credentialFor:
     ((call: ToolCall) => Promise<AuthProvider | undefined>) | undefined;
+  private readonly idempotencyKeyFor: ((call: ToolCall) => string | undefined) | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -99,6 +108,7 @@ export class ToolExecutor {
     this.authorizer = options.authorizer;
     this.audit = options.audit;
     this.credentialFor = options.credentialFor;
+    this.idempotencyKeyFor = options.idempotencyKeyFor;
   }
 
   /**
@@ -193,23 +203,30 @@ export class ToolExecutor {
       throw error;
     }
 
+    // Step 4.5: a write's idempotency key, when the API supports keys.
+    const idempotencyKey = tool.safety === 'write' ? this.idempotencyKeyFor?.(call) : undefined;
+
     // Write-ahead: a write runs only once its audit record is saved.
     if (audit && tool.safety === 'write') {
       try {
         await audit.audit.started(audit.entry);
       } catch (error) {
-        if (error instanceof WriteAlreadyStartedError) {
+        if (error instanceof WriteAlreadyStartedError && idempotencyKey !== undefined) {
+          // Started before (a retried run), but keyed: sending it again is safe, because the API
+          // does the write once per key and replays its stored answer. We get the real outcome.
+        } else if (error instanceof WriteAlreadyStartedError) {
           // Never twice: the first attempt may have reached the API before the process died.
           return fail(
             'outcome_unknown',
             'This action was already started once and may have been done. It was not run again; ' +
               'check the current state before trying again.',
           );
+        } else {
+          return fail(
+            'audit_unavailable',
+            'The action could not be recorded in the audit log, so it was not run. Try again later.',
+          );
         }
-        return fail(
-          'audit_unavailable',
-          'The action could not be recorded in the audit log, so it was not run. Try again later.',
-        );
       }
     }
 
@@ -217,7 +234,11 @@ export class ToolExecutor {
       try {
         const output = await withTimeout(
           (attemptSignal) =>
-            tool.execute(parsed.data, { signal: attemptSignal, ...(auth && { auth }) }),
+            tool.execute(parsed.data, {
+              signal: attemptSignal,
+              ...(auth && { auth }),
+              ...(idempotencyKey !== undefined && { idempotencyKey }),
+            }),
           this.timeoutMs,
           signal,
         );
@@ -225,12 +246,13 @@ export class ToolExecutor {
         return { ok: true, content: truncateResult(content, this.maxResultChars) };
       } catch (thrown) {
         const error = toToolError(thrown);
-        // Never retry writes: if the first attempt reached the server, a retry could repeat it.
+        // RETRY POLICY BY TOOL CLASS (Step 4.5): reads are retried; a write only when it carries
+        // an idempotency key (the API then does it once however often it arrives). A write
+        // without a key is never retried: if the first attempt reached the server, a retry
+        // could repeat it.
+        const safeToRepeat = tool.safety === 'read' || idempotencyKey !== undefined;
         const canRetry =
-          error.retryable &&
-          tool.safety === 'read' &&
-          attempt <= this.maxRetries &&
-          signal?.aborted !== true;
+          error.retryable && safeToRepeat && attempt <= this.maxRetries && signal?.aborted !== true;
         if (!canRetry) return { ok: false, error };
 
         const delayMs = backoffDelay(this.baseDelayMs, attempt);

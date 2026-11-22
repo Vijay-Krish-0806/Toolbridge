@@ -1,4 +1,4 @@
-import { IsIn, IsObject, IsOptional, IsString, IsUrl, Length } from 'class-validator';
+import { IsIn, IsObject, IsOptional, IsString, IsUrl, Length, Matches } from 'class-validator';
 
 import type { AuthKind } from '../domain/models.js';
 
@@ -34,6 +34,15 @@ export class SetConnectionDto {
   @IsOptional()
   @IsObject()
   loginFields?: Record<string, unknown>;
+
+  /**
+   * Step 4.5: the header this API reads an idempotency key from, if it supports keys (for
+   * example `Idempotency-Key`). Then every write carries a key derived from the run, so a
+   * retried or taken-over write is done once by the API. Omit when the API has no such support.
+   */
+  @IsOptional()
+  @Matches(/^[A-Za-z][A-Za-z0-9-]{0,63}$/, { message: 'idempotencyHeader must be a header name' })
+  idempotencyHeader?: string;
 }
 
 export class CallToolDto {

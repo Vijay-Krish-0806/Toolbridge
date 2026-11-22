@@ -21,6 +21,11 @@ export interface OpenApiToolsOptions {
   /** Supplies credentials; omit for public APIs. */
   auth?: AuthProvider;
   client: SafeHttpClient;
+  /**
+   * Step 4.5: the header that carries a call's idempotency key (for example `Idempotency-Key`),
+   * when the API supports one. Unset: keys are not sent, and writes are never retried.
+   */
+  idempotencyHeader?: string;
 }
 
 type JsonSchemaInput = Parameters<typeof z.fromJSONSchema>[0];
@@ -44,13 +49,14 @@ export function createOpenApiTools(
     parameters: definition.inputSchema,
     // The call's own credential (user delegation, Step 4.4c) wins over the one the tools were
     // created with (the tenant's stored service credential).
-    execute: (args: unknown, { signal, auth }) =>
+    execute: (args: unknown, { signal, auth, idempotencyKey }) =>
       callOperation(
         definition,
         args as Args,
         baseUrl,
         auth ? { ...options, auth } : options,
         signal,
+        idempotencyKey,
       ),
   }));
 }
@@ -67,6 +73,7 @@ async function callOperation(
   baseUrl: URL,
   options: OpenApiToolsOptions,
   signal: AbortSignal,
+  idempotencyKey?: string,
 ): Promise<unknown> {
   const binding = selectVariant(definition, args);
   const label = `${binding.method.toUpperCase()} ${binding.path}`;
@@ -74,6 +81,9 @@ async function callOperation(
   /** Builds a fresh request each time, so a retry gets fresh credentials. */
   const send = async () => {
     const request = buildRequest(binding, args, baseUrl);
+    if (idempotencyKey && options.idempotencyHeader) {
+      request.headers[options.idempotencyHeader.toLowerCase()] = idempotencyKey;
+    }
     await applyAuth(request, binding.security, options.securitySchemes, options.auth, signal);
     return options.client.send(request, signal);
   };

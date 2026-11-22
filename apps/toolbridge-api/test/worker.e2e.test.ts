@@ -5,6 +5,10 @@
  * - REQUIRED (approvals and idempotency: resuming never executes the same write twice): a worker
  *   killed DURING a write does not get that write repeated by the worker that takes over; the
  *   call reports `outcome_unknown` instead.
+ * - REQUIRED (Step 4.5 done-check: kill a worker between a side effect and its acknowledgement,
+ *   and no duplicate refund occurs): with idempotency keys, the next worker sends the write
+ *   again with the SAME key, the host replays its stored answer, and the run gets the real
+ *   result (one refund, audit `ok`).
  * - A run that exceeds its time limit is stopped and marked failed, without retry.
  * - A running run and a waiting run can be cancelled.
  * - A leg that keeps failing ends in the dead-letter set and the run is marked failed.
@@ -80,6 +84,9 @@ function listen(
 let host: { server: Server; url: string };
 const refunds: string[] = [];
 let hangOnRefund = false;
+/** Idempotency keys the fake host received, and the answer it stored for each (Step 4.5). */
+const keysSeen: string[] = [];
+const storedByKey = new Map<string, string>();
 
 // ---- Fake OpenAI-compatible model server for child workers. ----
 let llm: { server: Server; url: string };
@@ -134,9 +141,19 @@ beforeAll(async () => {
       if (req.headers.authorization !== `Bearer ${TOKEN}`) {
         res.writeHead(401).end('{}');
       } else if (req.method === 'POST' && req.url === '/refunds') {
+        // Like the real host (Step 4.5): a repeated Idempotency-Key gets the stored answer.
+        const key = req.headers['idempotency-key'];
+        if (typeof key === 'string') keysSeen.push(key);
+        const stored = typeof key === 'string' ? storedByKey.get(key) : undefined;
+        if (stored) {
+          res.writeHead(201, { 'idempotent-replayed': 'true' }).end(stored);
+          return;
+        }
         refunds.push(JSON.stringify(json));
+        const answer = JSON.stringify({ id: `r${String(refunds.length)}`, status: 'pending' });
+        if (typeof key === 'string') storedByKey.set(key, answer);
         if (hangOnRefund) return; // never answers: the worker is killed while waiting
-        res.writeHead(201).end(JSON.stringify({ id: 'r1', status: 'pending' }));
+        res.writeHead(201).end(answer);
       } else {
         res.writeHead(404).end('{}');
       }
@@ -190,6 +207,8 @@ afterEach(async () => {
   hangOnRefund = false;
   llmCalls = 0;
   refunds.length = 0;
+  keysSeen.length = 0;
+  storedByKey.clear();
 });
 
 // ---- Shared helpers. ----
@@ -214,7 +233,7 @@ interface RunView {
 }
 
 /** A tenant with the host spec, a connection to the fake API, refunds enabled, and `policy`. */
-async function tenant(policy: Record<string, unknown> = hostPolicy()) {
+async function tenant(policy: Record<string, unknown> = hostPolicy(), idempotent = false) {
   if (!h) throw new Error('no harness');
   const t = await createTenant(h.http, `T${String(Date.now())}`);
   const spec = await as(t.key)
@@ -228,6 +247,7 @@ async function tenant(policy: Record<string, unknown> = hostPolicy()) {
       baseUrl: host.url.replace('127.0.0.1', 'localhost'),
       authKind: 'static',
       secrets: { bearer: TOKEN },
+      ...(idempotent && { idempotencyHeader: 'Idempotency-Key' }),
     })
     .expect(200);
   await as(t.key)
@@ -324,6 +344,42 @@ describe('runs on workers', () => {
       const done = await waitFor(t.u1, runId, 'completed', 'failed');
       expect(done).toMatchObject({ status: 'completed', answer: 'all good' });
       expect(llmCalls).toBe(2);
+    },
+    TWO_WORKERS_MS,
+  );
+
+  it(
+    'with idempotency keys, a worker killed between the refund and its answer: one refund, real result',
+    async () => {
+      h = await startHarness();
+      const t = await tenant(NO_APPROVAL_POLICY, true);
+      llmReply = (call, json) =>
+        call === 1
+          ? {
+              tool: 'refunds_request',
+              args: { orderId: 'ORD-7', amountCents: 500, reason: 'damaged' },
+            }
+          : { text: `final: ${lastContent(json)}` };
+      hangOnRefund = true; // the host files the refund, but its answer never arrives
+      const first = await spawnWorker();
+      const runId = await startRun(t);
+      await until(() => refunds.length === 1);
+      first.kill('SIGKILL');
+
+      await spawnWorker();
+      const done = await waitFor(t.u1, runId, 'completed', 'failed');
+      expect(done.status).toBe('completed');
+      expect(done.answer).toContain('pending'); // the real answer, replayed by the host
+      expect(refunds).toHaveLength(1); // no duplicate refund
+      expect(keysSeen).toHaveLength(2); // sent twice...
+      expect(new Set(keysSeen).size).toBe(1); // ...with the same key
+      const audit = body<{ phase: string; status: string | null }[]>(
+        await as(t.key).get(`/audit?runId=${runId}&safety=write`).expect(200),
+      );
+      expect(audit.map((r) => [r.phase, r.status])).toEqual([
+        ['finished', 'ok'],
+        ['started', null],
+      ]);
     },
     TWO_WORKERS_MS,
   );

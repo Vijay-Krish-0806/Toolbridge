@@ -17,7 +17,9 @@ export function parseBody(response: HttpResponse): unknown {
 
 /**
  * Builds the error for a 4xx/5xx response. 429 and 5xx may pass on a later try, so they are
- * retryable; other 4xx will not.
+ * retryable; other 4xx will not, EXCEPT a 409 that carries `Retry-After`: the API's way of
+ * saying "the same request is still being processed, ask again" (an idempotency key in use,
+ * Step 4.5), unlike a business conflict such as "only 100 cents left to refund".
  * Before -> after: 409 `{ message: 'Order is not shipped' }` ->
  * `http_error 409: "POST /refunds failed with HTTP 409: Order is not shipped"`.
  */
@@ -26,7 +28,13 @@ export function responseError(response: HttpResponse, label: string): ToolExecut
   return new ToolExecutionError(
     'http_error',
     `${label} failed with HTTP ${String(status)}: ${apiMessage(parseBody(response))}`,
-    { status, retryable: status === 429 || status >= 500 },
+    {
+      status,
+      retryable:
+        status === 429 ||
+        status >= 500 ||
+        (status === 409 && response.headers['retry-after'] !== undefined),
+    },
   );
 }
 

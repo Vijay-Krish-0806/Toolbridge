@@ -10,6 +10,7 @@ import { CouponsModule } from './coupons/coupons.module.js';
 import { CustomersModule } from './customers/customers.module.js';
 import { FormsModule } from './forms/forms.module.js';
 import { HealthController } from './health/health.controller.js';
+import { IdempotencyModule } from './idempotency/idempotency.module.js';
 import { InventoryModule } from './inventory/inventory.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { ProductsModule } from './products/products.module.js';
@@ -40,6 +41,7 @@ export class AppModule {
         }),
         AuditModule,
         AuthModule,
+        IdempotencyModule,
         ProductsModule,
         InventoryModule,
         CustomersModule,

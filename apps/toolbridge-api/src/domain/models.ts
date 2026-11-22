@@ -110,6 +110,11 @@ export interface ApiConnection {
     tokenField: string | null;
   };
   secret: EncryptedSecret | null;
+  /**
+   * Step 4.5: the request header the API reads an idempotency key from (for example
+   * `Idempotency-Key`), or null when it has none. Only with a key are writes ever retried.
+   */
+  idempotencyHeader: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -354,6 +359,7 @@ const connectionSchema = new Schema<ApiConnection>({
     tokenField: { type: String, default: null },
   },
   secret: { type: Schema.Types.Mixed, default: null },
+  idempotencyHeader: { type: String, default: null },
   createdAt: { type: Date, required: true },
   updatedAt: { type: Date, required: true },
 });

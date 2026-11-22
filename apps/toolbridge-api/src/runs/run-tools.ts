@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type ApprovalPolicy,
@@ -8,6 +10,7 @@ import {
   type RunAccess,
   type SafeHttpClient,
   StaticCredentials,
+  hashArguments,
   type ToolCall,
   ToolExecutor,
   ToolRegistry,
@@ -100,6 +103,9 @@ export class RunToolsService {
         securitySchemes: compiled.model.securitySchemes,
         client: this.client,
         ...(connection.auth !== undefined && { auth: connection.auth }),
+        ...(connection.idempotencyHeader !== null && {
+          idempotencyHeader: connection.idempotencyHeader,
+        }),
       },
     );
     const registry = new ToolRegistry(tools);
@@ -131,6 +137,13 @@ export class RunToolsService {
       registry,
       executor: new ToolExecutor(registry, {
         authorizer,
+        // Step 4.5: when the API supports keys, every write carries one derived from DURABLE
+        // state (tenant, run, call id, arguments): the same on a retry, after a token refresh, a
+        // change of identity or a worker takeover, so the API does the write once.
+        ...(connection.idempotencyHeader !== null && {
+          idempotencyKeyFor: (call: ToolCall) =>
+            idempotencyKey(tenantId, run.runId, call.id, hashArguments(call.arguments)),
+        }),
         ...(delegated && { credentialFor }),
         audit: this.audit.auditorFor(tenantId, {
           runId: run.runId,
@@ -148,4 +161,26 @@ export class RunToolsService {
       approvals: createApprovalPolicy(policy),
     };
   }
+}
+
+/**
+ * A write's idempotency key: sha256 of who, which run, which call and which arguments. No
+ * credential or time in it, so it never changes between attempts of the same call.
+ * Before -> after: (tenant, 'run-3f2c', 'call_1', '9c1f…') -> 'tb-' + 64 hex characters.
+ */
+export function idempotencyKey(
+  tenantId: Types.ObjectId,
+  runId: string,
+  callId: string,
+  argsHash: string,
+): string {
+  const digest = createHash('sha256')
+    .update(
+      `${tenantId.toHexString()}
+${runId}
+${callId}
+${argsHash}`,
+    )
+    .digest('hex');
+  return `tb-${digest}`;
 }

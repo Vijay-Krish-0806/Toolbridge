@@ -84,6 +84,8 @@ await call('PUT', `/specs/${specId}/connection`, key, {
   authKind: 'login',
   loginPath: '/auth/login',
   loginFields: { email: need('HOST_API_EMAIL'), password: need('HOST_API_PASSWORD') },
+  // Step 4.5: the host store reads idempotency keys, so writes are safe to retry.
+  idempotencyHeader: 'Idempotency-Key',
 });
 for (const tool of ['refunds_request', 'orders_update_notes']) {
   await call('PATCH', `/specs/${specId}/tools/${tool}`, key, { enabled: true });

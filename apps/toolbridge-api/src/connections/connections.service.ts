@@ -33,6 +33,7 @@ export interface ConnectionView {
   loginPath: string | null;
   tokenField: string | null;
   hasSecret: boolean;
+  idempotencyHeader: string | null;
   /** Which master key version wraps the secret's data key (useful during rotation). */
   keyVersion: string | null;
   updatedAt: Date;
@@ -72,14 +73,22 @@ export class ConnectionsService {
     const secret = payload
       ? encryptSecret(JSON.stringify(payload), connectionAad(tenantId, connectionId), this.keys)
       : null;
+    const idempotencyHeader = dto.idempotencyHeader ?? null;
 
     const now = new Date();
     if (existing) {
       await store.updateOne(
         { _id: connectionId },
-        { baseUrl: dto.baseUrl, auth, secret, updatedAt: now },
+        { baseUrl: dto.baseUrl, auth, secret, idempotencyHeader, updatedAt: now },
       );
-      return view({ ...existing, baseUrl: dto.baseUrl, auth, secret, updatedAt: now });
+      return view({
+        ...existing,
+        baseUrl: dto.baseUrl,
+        auth,
+        secret,
+        idempotencyHeader,
+        updatedAt: now,
+      });
     }
     const created = await store.insertOne({
       _id: connectionId,
@@ -87,6 +96,7 @@ export class ConnectionsService {
       baseUrl: dto.baseUrl,
       auth,
       secret,
+      idempotencyHeader,
       createdAt: now,
       updatedAt: now,
     } as Omit<ApiConnection, '_id' | 'tenantId'>);
@@ -113,7 +123,7 @@ export class ConnectionsService {
   async forCall(
     tenantId: Types.ObjectId,
     specId: Types.ObjectId,
-  ): Promise<{ baseUrl: string; auth?: AuthProvider }> {
+  ): Promise<{ baseUrl: string; idempotencyHeader: string | null; auth?: AuthProvider }> {
     const connection = await this.scoped(tenantId).findOne({ specId });
     if (!connection) {
       throw new ConflictException(
@@ -121,7 +131,8 @@ export class ConnectionsService {
       );
     }
     const { baseUrl, auth, secret } = connection;
-    if (auth.kind === 'none' || secret === null) return { baseUrl };
+    const idempotencyHeader = connection.idempotencyHeader ?? null;
+    if (auth.kind === 'none' || secret === null) return { baseUrl, idempotencyHeader };
     let payload: SecretPayload;
     try {
       payload = JSON.parse(
@@ -137,9 +148,12 @@ export class ConnectionsService {
       }
       throw error;
     }
-    if ('secrets' in payload) return { baseUrl, auth: new StaticCredentials(payload.secrets) };
+    if ('secrets' in payload) {
+      return { baseUrl, idempotencyHeader, auth: new StaticCredentials(payload.secrets) };
+    }
     return {
       baseUrl,
+      idempotencyHeader,
       auth: new TokenLogin({
         client: this.client,
         loginUrl: new URL(auth.loginPath ?? '/', baseUrl),
@@ -249,6 +263,7 @@ function view(connection: ApiConnection): ConnectionView {
     loginPath: connection.auth.loginPath,
     tokenField: connection.auth.tokenField,
     hasSecret: connection.secret !== null,
+    idempotencyHeader: connection.idempotencyHeader ?? null,
     keyVersion: connection.secret?.dataKey.keyVersion ?? null,
     updatedAt: connection.updatedAt,
   };

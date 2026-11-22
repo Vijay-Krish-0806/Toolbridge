@@ -18,6 +18,12 @@ export interface ToolContext {
    * calls an API uses it instead of the credential it was created with.
    */
   auth?: AuthProvider;
+  /**
+   * Step 4.5: the idempotency key of THIS call, derived from durable state (the same on every
+   * retry and after a takeover). A tool that calls an API sends it, so the API does the write
+   * only once however often the request arrives.
+   */
+  idempotencyKey?: string;
 }
 
 /**

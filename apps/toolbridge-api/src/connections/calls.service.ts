@@ -61,15 +61,24 @@ export class CallsService {
       securitySchemes: compiled.model.securitySchemes,
       client: this.client,
       ...(connection.auth !== undefined && { auth: connection.auth }),
+      ...(connection.idempotencyHeader !== null && {
+        idempotencyHeader: connection.idempotencyHeader,
+      }),
     });
+    const callId = randomUUID();
     const audit = this.audit.auditorFor(tenantId, {
       runId: null,
       actor: { kind: 'api_key', keyId },
       credentialMode: 'service',
       policyVersion: null, // direct calls have no role, so no role policy applies
     });
-    return new ToolExecutor(new ToolRegistry(tools), { audit }).run({
-      id: randomUUID(),
+    // A direct call is its own unit: its key covers the executor's retries of this one request.
+    const keyed = connection.idempotencyHeader !== null;
+    return new ToolExecutor(new ToolRegistry(tools), {
+      audit,
+      ...(keyed && { idempotencyKeyFor: () => `tb-direct-${callId}` }),
+    }).run({
+      id: callId,
       name: toolName,
       arguments: JSON.stringify(args),
     });

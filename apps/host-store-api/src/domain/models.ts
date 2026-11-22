@@ -2,6 +2,7 @@ import type { Connection } from 'mongoose';
 import { auditEventSchema } from './audit-event.schema.js';
 import { couponSchema } from './coupon.schema.js';
 import { customerSchema } from './customer.schema.js';
+import { idempotencySchema } from './idempotency.schema.js';
 import { inventorySchema } from './inventory.schema.js';
 import { orderSchema } from './order.schema.js';
 import { productSchema } from './product.schema.js';
@@ -23,6 +24,7 @@ export const MODEL = {
   Refund: { name: 'Refund', schema: refundSchema },
   User: { name: 'User', schema: userSchema },
   AuditEvent: { name: 'AuditEvent', schema: auditEventSchema },
+  Idempotency: { name: 'Idempotency', schema: idempotencySchema },
 } as const;
 
 /** Registers every model on one connection (not the global mongoose default). Used by the seed. */
@@ -37,6 +39,7 @@ export function registerModels(connection: Connection) {
     shipments: connection.model('Shipment', shipmentSchema),
     refunds: connection.model('Refund', refundSchema),
     auditEvents: connection.model('AuditEvent', auditEventSchema),
+    idempotency: connection.model('Idempotency', idempotencySchema),
   };
 }
 

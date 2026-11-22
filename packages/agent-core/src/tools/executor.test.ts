@@ -327,3 +327,56 @@ describe('ToolExecutor with credentialFor', () => {
     expect(events).toEqual(['finished credential_unavailable']);
   });
 });
+
+/**
+ * Step 4.5 (money safety): the retry policy by tool class. A write is retried only when it
+ * carries an idempotency key, always with the same key; without a key it is never retried.
+ */
+describe('ToolExecutor with idempotency keys', () => {
+  /** A write tool that fails once with a retryable error, recording the key of every attempt. */
+  function flakyWrite() {
+    const keys: (string | undefined)[] = [];
+    const tool = defineTool({
+      name: 'refund_thing',
+      description: 'test tool',
+      safety: 'write',
+      input: z.object({ id: z.string() }),
+      execute: (_args, context) => {
+        keys.push(context.idempotencyKey);
+        return keys.length === 1 ? Promise.reject(serverError) : Promise.resolve({ ok: true });
+      },
+    });
+    return { tool, keys };
+  }
+  const fast = { sleep: () => Promise.resolve() };
+
+  it('retries a keyed write on a retryable error, with the same key', async () => {
+    const { tool, keys } = flakyWrite();
+    const executor = new ToolExecutor(new ToolRegistry([tool]), {
+      ...fast,
+      idempotencyKeyFor: (c) => `key-${c.id}`,
+    });
+    expect(await executor.run(call('refund_thing', '{"id":"a"}'))).toMatchObject({ ok: true });
+    expect(keys).toEqual(['key-call_1', 'key-call_1']);
+  });
+
+  it('never retries a write without a key', async () => {
+    const { tool, keys } = flakyWrite();
+    const executor = new ToolExecutor(new ToolRegistry([tool]), fast);
+    expect(await executor.run(call('refund_thing', '{"id":"a"}'))).toMatchObject({ ok: false });
+    expect(keys).toEqual([undefined]);
+  });
+
+  it('sends a keyed write that already started again, instead of refusing it', async () => {
+    const write = flakyTool('refund_thing', 'write', 0, serverError);
+    const executor = new ToolExecutor(new ToolRegistry([write.tool]), {
+      idempotencyKeyFor: () => 'key-1',
+      audit: {
+        started: () => Promise.reject(new WriteAlreadyStartedError('started before')),
+        finished: () => Promise.resolve(),
+      },
+    });
+    expect(await executor.run(call('refund_thing', '{"id":"a"}'))).toMatchObject({ ok: true });
+    expect(write.calls()).toBe(1);
+  });
+});
