@@ -82,6 +82,7 @@ describe('keys', () => {
       name: 'Alice Shop',
       allowedOrigins: [],
       credentialMode: 'service',
+      monthlyTokenBudget: null,
     });
   });
 });

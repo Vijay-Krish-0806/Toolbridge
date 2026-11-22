@@ -14,8 +14,13 @@ interface Doc {
 }
 
 /** A fake collection that records every filter it receives, so tests can inspect them. */
-function recordingCollection(): { collection: Collection<Doc>; filters: Filter[] } {
+function recordingCollection(): {
+  collection: Collection<Doc>;
+  filters: Filter[];
+  pipelines: Filter[][];
+} {
   const filters: Filter[] = [];
+  const pipelines: Filter[][] = [];
   const collection: Collection<Doc> = {
     find: (filter) => {
       filters.push(filter);
@@ -46,8 +51,13 @@ function recordingCollection(): { collection: Collection<Doc>; filters: Filter[]
       filters.push(filter);
       return Promise.resolve(0);
     },
+    aggregate: <R>(pipeline: Filter[]) => {
+      filters.push(pipeline[0]?.$match as Filter);
+      pipelines.push(pipeline);
+      return Promise.resolve([] as R[]);
+    },
   };
-  return { collection, filters };
+  return { collection, filters, pipelines };
 }
 
 const TENANT = new Types.ObjectId();
@@ -71,7 +81,8 @@ describe('TenantScoped', () => {
     await scoped.deleteOne({ name: 'shop' });
     await scoped.findOneAndUpdate({ name: 'shop' }, { name: 'store' });
     await scoped.incrementOne({ name: 'shop' }, 'count');
-    expect(filters).toHaveLength(7);
+    await scoped.aggregate([{ $group: { _id: null } }]);
+    expect(filters).toHaveLength(8);
     for (const filter of filters) expect(filter.tenantId).toEqual(TENANT);
   });
 
@@ -94,5 +105,16 @@ describe('TenantScoped', () => {
     expect(() => scoped.findOneAndUpdate({ name: 'shop' }, { tenantId: other })).toThrow(
       TenantScopeError,
     );
+  });
+
+  it('runs aggregations behind a tenant $match, and refuses stages that reach other documents', async () => {
+    const { collection, pipelines } = recordingCollection();
+    const scoped = new TenantScoped(collection, TENANT);
+    await scoped.aggregate([{ $group: { _id: '$name' } }]);
+    expect(pipelines[0]?.[0]).toEqual({ $match: { tenantId: TENANT } });
+    for (const stage of ['$lookup', '$unionWith', '$graphLookup', '$out', '$merge']) {
+      expect(() => scoped.aggregate([{ [stage]: {} }])).toThrow(TenantScopeError);
+    }
+    expect(pipelines).toHaveLength(1);
   });
 });

@@ -37,6 +37,7 @@ import { SessionsService } from './sessions/sessions.service.js';
 import { SpecsController } from './specs/specs.controller.js';
 import { AdminTenantsController, TenantController } from './tenants/tenants.controller.js';
 import { TenantsService } from './tenants/tenants.service.js';
+import { TenantBudget } from './usage/tenant-budget.js';
 import { UsageController } from './usage/usage.controller.js';
 
 /** Liveness check; the only route without a key. */
@@ -108,6 +109,7 @@ export class AppModule {
         TenantsService,
         CallsService,
         RunsService,
+        TenantBudget,
         ApprovalsService,
         SessionsService,
         ApiKeyVerifier,

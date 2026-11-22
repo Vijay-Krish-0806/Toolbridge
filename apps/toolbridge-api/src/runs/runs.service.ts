@@ -20,6 +20,7 @@ import { TenantsService } from '../tenants/tenants.service.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { RunQueue } from './run-queue.js';
 import { RunToolsService } from './run-tools.js';
+import { TenantBudget } from '../usage/tenant-budget.js';
 
 /** What callers see about a run. */
 export interface RunView {
@@ -32,6 +33,8 @@ export interface RunView {
   answer: string | null;
   stopReason: string | null;
   usage: Run['usage'];
+  /** Most tokens this run may use (Step 4.6); null on runs from before 4.6. */
+  tokenCap: number | null;
   error: string | null;
   cancelRequested: boolean;
   createdAt: Date;
@@ -60,6 +63,7 @@ export class RunsService {
     private readonly events: EventLog,
     private readonly tenants: TenantsService,
     private readonly userTokens: UserTokenStore,
+    private readonly budget: TenantBudget,
   ) {}
 
   /**
@@ -67,11 +71,13 @@ export class RunsService {
    * Before -> after: ("refund ORD-7", support user u1) -> `{ runId: '3f2c…', status: 'running' }`.
    * The tools are built once here only as a CHECK, so an unknown spec (404) or a spec without a
    * connection (409) is refused in the response instead of failing later on a worker.
+   * The token cap is fixed here too (Step 4.6); a tenant out of budget gets 429 and no run.
    */
   async start(
     tenantId: Types.ObjectId,
     input: { specId: string; message: string; principal: Principal; sessionId: string },
   ): Promise<{ runId: string; status: RunStatus }> {
+    const tokenCap = await this.budget.capForNewRun(tenantId);
     const spec = await this.specs.requireSpec(tenantId, input.specId);
     const runId = randomUUID();
     // The mode is fixed now, for the whole run: switching the tenant later never changes it.
@@ -95,6 +101,7 @@ export class RunsService {
       answer: null,
       stopReason: null,
       usage: null,
+      tokenCap,
       error: null,
       cancelRequested: false,
       eventSeq: 0,
@@ -235,6 +242,7 @@ export function view(run: Run): RunView {
     answer: run.answer,
     stopReason: run.stopReason,
     usage: run.usage,
+    tokenCap: run.tokenCap ?? null,
     error: run.error,
     cancelRequested: run.cancelRequested,
     createdAt: run.createdAt,

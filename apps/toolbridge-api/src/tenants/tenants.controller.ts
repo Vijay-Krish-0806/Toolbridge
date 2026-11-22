@@ -4,6 +4,7 @@ import { AdminOnly, CurrentCaller, type Caller } from '../auth/auth.decorators.j
 import {
   CreateApiKeyDto,
   CreateTenantDto,
+  SetBudgetDto,
   SetCredentialModeDto,
   SetOriginsDto,
 } from './tenants.dto.js';
@@ -43,6 +44,12 @@ export class TenantController {
   @Put('tenant/credential-mode')
   setCredentialMode(@CurrentCaller() caller: Caller, @Body() dto: SetCredentialModeDto) {
     return this.tenants.setCredentialMode(caller.tenantId, dto.mode);
+  }
+
+  /** Tokens per calendar month (UTC) for new runs, or null for no limit (Step 4.6). */
+  @Put('tenant/budget')
+  setBudget(@CurrentCaller() caller: Caller, @Body() dto: SetBudgetDto) {
+    return this.tenants.setMonthlyTokenBudget(caller.tenantId, dto.monthlyTokenBudget);
   }
 
   @Get('api-keys')

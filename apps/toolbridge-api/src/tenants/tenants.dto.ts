@@ -1,4 +1,14 @@
-import { ArrayMaxSize, IsArray, IsIn, IsString, Length } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsString,
+  Length,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 import { MAX_ORIGINS } from '../auth/origins.js';
 
@@ -28,4 +38,13 @@ export class SetOriginsDto {
 export class SetCredentialModeDto {
   @IsIn(['service', 'delegated'])
   mode!: 'service' | 'delegated';
+}
+
+/** PUT /tenant/budget: tokens per calendar month (UTC), or null for no limit. 0 stops all runs. */
+export class SetBudgetDto {
+  @ValidateIf((dto: SetBudgetDto) => dto.monthlyTokenBudget !== null)
+  @IsInt()
+  @Min(0)
+  @Max(1_000_000_000_000)
+  monthlyTokenBudget!: number | null;
 }

@@ -95,8 +95,9 @@ export class RunExecutor {
       checkpointer: this.checkpointer,
       runId: run._id,
       signal,
-      // The cap counts the run's checkpointed totals, so it spans every leg of the run.
-      limits: { maxRunTokens: this.config.RUN_MAX_TOKENS },
+      // The cap was fixed when the run started (RUN_MAX_TOKENS, or less when the tenant's budget
+      // was nearly used). It counts the run's checkpointed totals, so it spans every leg.
+      limits: { maxRunTokens: run.tokenCap ?? this.config.RUN_MAX_TOKENS },
       onEvent: (event: AgentEvent) => {
         sink.onEvent(event);
         meter.onEvent(event);

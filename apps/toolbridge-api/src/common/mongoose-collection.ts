@@ -2,7 +2,7 @@
  * Adapts a Mongoose model to the small Collection interface that TenantScoped uses.
  * Keeping the interface small means the scoping rules can be tested without a database.
  */
-import type { Model, QueryFilter, UpdateQuery } from 'mongoose';
+import type { Model, PipelineStage, QueryFilter, UpdateQuery } from 'mongoose';
 
 import type { Collection, Filter } from './tenant-scoped.js';
 
@@ -32,5 +32,8 @@ export function mongooseCollection<T>(model: Model<T>): Collection<T> {
         .exec(),
     countDocuments: (filter) => model.countDocuments(filterOf(filter)).exec(),
     deleteOne: async (filter) => (await model.deleteOne(filterOf(filter)).exec()).deletedCount,
+    // Our stages are plain objects; Mongoose's PipelineStage union is stricter than needed here.
+    aggregate: <R>(pipeline: Filter[]) =>
+      model.aggregate<R>(pipeline as unknown as PipelineStage[]).exec(),
   };
 }

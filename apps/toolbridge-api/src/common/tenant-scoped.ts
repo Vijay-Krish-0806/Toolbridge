@@ -25,7 +25,16 @@ export interface Collection<T> {
   countDocuments(filter: Filter): Promise<number>;
   /** Returns how many documents were deleted (0 or 1). */
   deleteOne(filter: Filter): Promise<number>;
+  /** Runs an aggregation pipeline; returns its output documents. */
+  aggregate<R>(pipeline: Filter[]): Promise<R[]>;
 }
+
+/**
+ * Pipeline stages that read or write OTHER documents than the ones flowing through the pipeline
+ * (another collection, or the same one without our filter). A tenant `$match` at the start
+ * cannot scope those, so a tenant-scoped pipeline may not use them.
+ */
+const CROSS_DOCUMENT_STAGES = ['$lookup', '$unionWith', '$graphLookup', '$out', '$merge'];
 
 /** Thrown when code tries to use tenant data without a valid tenant, or to cross tenants. */
 export class TenantScopeError extends Error {
@@ -97,6 +106,20 @@ export class TenantScoped<T extends { tenantId: Types.ObjectId }> {
   /** Deletes one document of this tenant. */
   deleteOne(filter: Filter): Promise<number> {
     return this.collection.deleteOne(this.scope(filter));
+  }
+
+  /**
+   * Runs an aggregation over this tenant's documents only: the tenant `$match` is always the
+   * first stage. Stages that could reach other documents are refused (CROSS_DOCUMENT_STAGES).
+   * Before -> after: `[{ $group: { _id: null, n: { $sum: 1 } } }]` ->
+   * `[{ $match: { tenantId } }, { $group: ... }]`.
+   */
+  aggregate<R>(pipeline: Filter[]): Promise<R[]> {
+    for (const stage of pipeline) {
+      const name = Object.keys(stage).find((key) => CROSS_DOCUMENT_STAGES.includes(key));
+      if (name) throw new TenantScopeError(`${name} cannot be used in a tenant-scoped pipeline.`);
+    }
+    return this.collection.aggregate<R>([{ $match: { tenantId: this.tenantId } }, ...pipeline]);
   }
 
   /** Counts this tenant's matching documents. */

@@ -17,6 +17,29 @@ export interface RunSpend {
   costMicroUsd: number;
 }
 
+/** One row of the usage report: one model on one UTC day. */
+export interface UsageDay extends RunSpend {
+  /** `YYYY-MM-DD`, UTC. */
+  day: string;
+  model: string;
+}
+
+/** Sums that every grouping stage adds up (the same for a run, a day or a month). */
+const SUMS = {
+  modelCalls: { $sum: 1 },
+  inputTokens: { $sum: '$inputTokens' },
+  outputTokens: { $sum: '$outputTokens' },
+  costMicroUsd: { $sum: '$costMicroUsd' },
+};
+
+/**
+ * The first moment of `now`'s calendar month in UTC: the start of the budget period.
+ * Before -> after: 2026-11-22T17:30:00Z -> 2026-11-01T00:00:00Z.
+ */
+export function monthStartUtc(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
 /** Collects one leg's model calls and writes them; `flush` waits for every write. */
 export interface UsageMeter {
   onEvent(event: AgentEvent): void;
@@ -59,22 +82,59 @@ export class UsageLedger {
   }
 
   /**
-   * What one run spent, from its rows. A run has at most a few dozen model calls, so the rows
-   * are summed here rather than in an aggregation.
+   * What one run spent, from its rows.
    * Before -> after: rows of 900+40 and 1,200+60 tokens -> `{ modelCalls: 2, inputTokens: 2100,
-   * outputTokens: 100, costMicroUsd: ... }`.
+   * outputTokens: 100, costMicroUsd: ... }`; no rows -> all zeros.
    */
   async runSpend(tenantId: Types.ObjectId, runId: string): Promise<RunSpend> {
-    const rows = await this.records(tenantId).find({ runId });
-    return rows.reduce<RunSpend>(
-      (sum, row) => ({
-        modelCalls: sum.modelCalls + 1,
-        inputTokens: sum.inputTokens + row.inputTokens,
-        outputTokens: sum.outputTokens + row.outputTokens,
-        costMicroUsd: sum.costMicroUsd + row.costMicroUsd,
-      }),
-      { modelCalls: 0, inputTokens: 0, outputTokens: 0, costMicroUsd: 0 },
-    );
+    const [sum] = await this.records(tenantId).aggregate<RunSpend>([
+      { $match: { runId } },
+      { $group: { _id: null, ...SUMS } },
+      { $project: { _id: 0 } },
+    ]);
+    return sum ?? { modelCalls: 0, inputTokens: 0, outputTokens: 0, costMicroUsd: 0 };
+  }
+
+  /**
+   * Tokens (input plus output) the tenant used from `from` until now. Counted in MongoDB with an
+   * aggregation over the (tenantId, at) index, so no rows travel to the API.
+   * Before -> after: rows of 900+40 and 1,200+60 since Nov 1 -> 2,200.
+   */
+  async tokensSince(tenantId: Types.ObjectId, from: Date): Promise<number> {
+    const [sum] = await this.records(tenantId).aggregate<{ tokens: number }>([
+      { $match: { at: { $gte: from } } },
+      { $group: { _id: null, tokens: { $sum: { $add: ['$inputTokens', '$outputTokens'] } } } },
+    ]);
+    return sum?.tokens ?? 0;
+  }
+
+  /**
+   * The tenant's use in [from, to), one row per UTC day and model, oldest first.
+   * Before -> after: (Nov 1, Nov 23) -> `[{ day: '2026-11-22', model: 'qwen…', modelCalls: 3,
+   * inputTokens: 11797, outputTokens: 294, costMicroUsd: 0 }]`.
+   */
+  async report(tenantId: Types.ObjectId, from: Date, to: Date): Promise<UsageDay[]> {
+    const rows = await this.records(tenantId).aggregate<RunSpend & { _id: UsageDay }>([
+      { $match: { at: { $gte: from, $lt: to } } },
+      {
+        $group: {
+          _id: {
+            day: { $dateToString: { format: '%Y-%m-%d', date: '$at', timezone: 'UTC' } },
+            model: '$model',
+          },
+          ...SUMS,
+        },
+      },
+      { $sort: { '_id.day': 1, '_id.model': 1 } },
+    ]);
+    return rows.map(({ _id, modelCalls, inputTokens, outputTokens, costMicroUsd }) => ({
+      day: _id.day,
+      model: _id.model,
+      modelCalls,
+      inputTokens,
+      outputTokens,
+      costMicroUsd,
+    }));
   }
 
   /** Writes one call's row. A server that reports no token counts is recorded as 0, loudly. */

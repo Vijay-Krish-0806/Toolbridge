@@ -44,6 +44,7 @@ export class TenantsService {
     name: string;
     allowedOrigins: string[];
     credentialMode: CredentialMode;
+    monthlyTokenBudget: number | null;
   }> {
     const tenant = await this.tenants.findById(tenantId).lean<Tenant>().exec();
     if (!tenant) throw new NotFoundException('Tenant not found.');
@@ -52,6 +53,7 @@ export class TenantsService {
       name: tenant.name,
       allowedOrigins: tenant.allowedOrigins,
       credentialMode: tenant.credentialMode,
+      monthlyTokenBudget: tenant.monthlyTokenBudget ?? null,
     };
   }
 
@@ -65,6 +67,26 @@ export class TenantsService {
   ): Promise<{ credentialMode: CredentialMode }> {
     await this.tenants.updateOne({ _id: tenantId }, { $set: { credentialMode: mode } }).exec();
     return { credentialMode: mode };
+  }
+
+  /**
+   * Sets the monthly token budget (Step 4.6); null removes the limit. It applies to runs that
+   * START from now on; running ones keep the cap they started with.
+   */
+  async setMonthlyTokenBudget(
+    tenantId: Types.ObjectId,
+    budget: number | null,
+  ): Promise<{ monthlyTokenBudget: number | null }> {
+    await this.tenants
+      .updateOne({ _id: tenantId }, { $set: { monthlyTokenBudget: budget } })
+      .exec();
+    return { monthlyTokenBudget: budget };
+  }
+
+  /** The tenant's monthly token budget; null = no limit (also for tenants from before 4.6). */
+  async monthlyTokenBudgetOf(tenantId: Types.ObjectId): Promise<number | null> {
+    const tenant = await this.tenants.findById(tenantId).lean<Tenant>().exec();
+    return tenant?.monthlyTokenBudget ?? null;
   }
 
   /** The tenant's current mode (what a run starting now takes). */

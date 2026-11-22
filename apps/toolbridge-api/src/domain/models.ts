@@ -19,6 +19,11 @@ export interface Tenant {
   allowedOrigins: string[];
   /** Whose credential runs use (Step 4.4c); new runs take it at start. Default `service`. */
   credentialMode: CredentialMode;
+  /**
+   * Most tokens this tenant's runs may use per calendar month, UTC (Step 4.6). null = no limit.
+   * A soft limit: runs already going may finish their own cap past it.
+   */
+  monthlyTokenBudget: number | null;
   createdAt: Date;
 }
 
@@ -154,6 +159,12 @@ export interface Run {
   answer: string | null;
   stopReason: string | null;
   usage: AgentUsage | null;
+  /**
+   * The run's token cap (Step 4.6), fixed when it starts: the smaller of RUN_MAX_TOKENS and the
+   * tenant's tokens left this month. Fixed once, because the run's own spend lowers the tenant's
+   * balance as it goes. null on runs from before 4.6 (the worker then uses RUN_MAX_TOKENS).
+   */
+  tokenCap: number | null;
   /** Why the run failed, for people; never a stack trace. */
   error: string | null;
   /** Set by POST /runs/:id/cancel; the worker running the leg stops it (Step 4.4a). */
@@ -314,6 +325,7 @@ const tenantSchema = new Schema<Tenant>({
   name: { type: String, required: true },
   allowedOrigins: { type: [String], default: [] },
   credentialMode: { type: String, enum: ['service', 'delegated'], default: 'service' },
+  monthlyTokenBudget: { type: Number, default: null },
   createdAt: { type: Date, required: true },
 });
 // Multikey index: "does any tenant allow this origin?" (CORS preflight, which has no token).
@@ -405,6 +417,7 @@ const runSchema = new Schema<Run>({
   answer: { type: String, default: null },
   stopReason: { type: String, default: null },
   usage: { type: Schema.Types.Mixed, default: null },
+  tokenCap: { type: Number, default: null },
   error: { type: String, default: null },
   cancelRequested: { type: Boolean, default: false },
   eventSeq: { type: Number, default: 0 },
