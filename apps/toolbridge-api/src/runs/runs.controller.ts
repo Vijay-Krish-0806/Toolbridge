@@ -21,6 +21,13 @@ export class RunsController {
   get(@CurrentCaller() caller: Caller, @Param('runId') runId: string) {
     return this.runs.get(caller.tenantId, runId);
   }
+
+  /** 202 Accepted: a waiting run is cancelled at once; a running one is stopped by its worker. */
+  @Post(':runId/cancel')
+  @HttpCode(202)
+  cancel(@CurrentCaller() caller: Caller, @Param('runId') runId: string) {
+    return this.runs.cancel(caller.tenantId, runId);
+  }
 }
 
 /** Approval cards: the inbox, and approving or rejecting with a reason. */

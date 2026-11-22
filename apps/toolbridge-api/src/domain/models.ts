@@ -108,11 +108,11 @@ export interface ApiConnection {
 }
 
 /**
- * running: the graph is executing in this process. waiting_for_approval: paused on an approval
- * card (its checkpoint is in MongoDB). completed: the graph finished. failed: it threw, or the
- * process stopped while it was running.
+ * running: queued or executing on a worker. waiting_for_approval: paused on an approval card
+ * (its checkpoint is in MongoDB). completed: the graph finished. failed: it threw on every
+ * attempt, or hit its time limit. cancelled: stopped on request.
  */
-export type RunStatus = 'running' | 'waiting_for_approval' | 'completed' | 'failed';
+export type RunStatus = 'running' | 'waiting_for_approval' | 'completed' | 'failed' | 'cancelled';
 
 /**
  * Whose credential the tool calls use (ADR 0027, 0028). Only `service` (the spec's stored
@@ -141,11 +141,14 @@ export interface Run {
   usage: AgentUsage | null;
   /** Why the run failed, for people; never a stack trace. */
   error: string | null;
+  /** Set by POST /runs/:id/cancel; the worker running the leg stops it (Step 4.4a). */
+  cancelRequested: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
+/** cancelled: the run was cancelled while the card was pending, so it can no longer be decided. */
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 /**
  * One approval card: a paused model turn with every call and its exact arguments. Created by the
@@ -312,7 +315,7 @@ const runSchema = new Schema<Run>({
   credentialMode: { type: String, enum: ['service'], required: true },
   status: {
     type: String,
-    enum: ['running', 'waiting_for_approval', 'completed', 'failed'],
+    enum: ['running', 'waiting_for_approval', 'completed', 'failed', 'cancelled'],
     required: true,
   },
   approvalId: { type: Schema.Types.ObjectId, default: null },
@@ -320,6 +323,7 @@ const runSchema = new Schema<Run>({
   stopReason: { type: String, default: null },
   usage: { type: Schema.Types.Mixed, default: null },
   error: { type: String, default: null },
+  cancelRequested: { type: Boolean, default: false },
   createdAt: { type: Date, required: true },
   updatedAt: { type: Date, required: true },
 });
@@ -328,7 +332,7 @@ runSchema.index({ tenantId: 1, createdAt: -1 });
 const approvalSchema = new Schema<Approval>({
   tenantId: { type: Schema.Types.ObjectId, required: true },
   runId: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], required: true },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], required: true },
   level: { type: String, enum: ['required', 'high'], required: true },
   requesterId: { type: String, required: true },
   calls: { type: Schema.Types.Mixed, required: true },
@@ -357,6 +361,12 @@ const auditSchema = new Schema<AuditEntry>({
 });
 auditSchema.index({ tenantId: 1, at: -1 });
 auditSchema.index({ tenantId: 1, runId: 1, at: 1 });
+// The "never twice" guard (Step 4.4a): one `started` row per run, call and arguments. A retried
+// run that reaches the same write again cannot insert a second one, so the write is not repeated.
+auditSchema.index(
+  { tenantId: 1, runId: 1, callId: 1, argsHash: 1 },
+  { unique: true, partialFilterExpression: { phase: 'started', runId: { $type: 'string' } } },
+);
 
 const policyVersionSchema = new Schema<PolicyVersion>({
   tenantId: { type: Schema.Types.ObjectId, required: true },

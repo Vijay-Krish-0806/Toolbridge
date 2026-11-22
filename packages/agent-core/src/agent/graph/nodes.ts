@@ -90,7 +90,17 @@ export async function callModel(
   const iteration = state.iteration + 1;
 
   const started = performance.now();
-  const result = await streamModelTurn(llm, { messages: state.messages, tools: state.tools }, emit);
+  // `config.signal` is LangGraph's abort signal for the whole run (a time limit or a cancel,
+  // Step 4.4a); passing it on makes the model request stop at once instead of streaming on.
+  const result = await streamModelTurn(
+    llm,
+    {
+      messages: state.messages,
+      tools: state.tools,
+      ...(config.signal && { signal: config.signal }),
+    },
+    emit,
+  );
   emit({ type: 'llm-response', iteration, result, durationMs: performance.now() - started });
 
   const update: AgentStateUpdate = {
@@ -194,6 +204,7 @@ export async function executeTools(
     executor,
     emitterOf(config),
     access?.principal,
+    config.signal,
   );
   const turn = toolResultMessages(calls, results, state.consecutiveErrors);
 

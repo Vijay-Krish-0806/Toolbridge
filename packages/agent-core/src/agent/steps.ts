@@ -82,6 +82,7 @@ export async function runToolCalls(
   executor: ToolExecutor,
   emit: EmitEvent,
   principal?: Principal,
+  signal?: AbortSignal,
 ): Promise<ToolResult[]> {
   /** Runs one call, emitting start and end events around it. */
   const runOne = async (call: ToolCall): Promise<ToolResult> => {
@@ -89,7 +90,7 @@ export async function runToolCalls(
     const started = performance.now();
     // The principal travels with the call, so the executor can check access itself (layer 3).
     const result = offered.has(call.name)
-      ? await executor.run(call, principal ? { principal } : {})
+      ? await executor.run(call, { ...(principal && { principal }), ...(signal && { signal }) })
       : notOffered(call, offered);
     emit({ type: 'tool-end', call, result, durationMs: performance.now() - started });
     return result;

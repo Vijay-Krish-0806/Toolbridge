@@ -9,36 +9,28 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { getConnectionToken, InjectConnection, MongooseModule } from '@nestjs/mongoose';
-import {
-  type LLMProvider,
-  OpenAICompatibleProvider,
-  type SafeHttpClient,
-} from '@toolbridge/agent-core';
-import { OllamaEmbeddingProvider, ToolIndex } from '@toolbridge/retrieval';
+import { InjectConnection } from '@nestjs/mongoose';
+import type { SafeHttpClient } from '@toolbridge/agent-core';
+import type { ToolIndex } from '@toolbridge/retrieval';
 import type { Connection } from 'mongoose';
 
 import { AuditController } from './audit/audit.controller.js';
-import { AuditLog } from './audit/audit-log.js';
 import { Public } from './auth/auth.decorators.js';
 import { PlatformAuthGuard } from './auth/platform-auth.guard.js';
-import { AGENT_LLM, CoreModule, OUTBOUND_HTTP, TOOL_INDEX } from './common/core.module.js';
+import { OUTBOUND_HTTP, TOOL_INDEX } from './common/core.module.js';
 import { CallsService } from './connections/calls.service.js';
 import {
   AdminConnectionsController,
   ConnectionsController,
 } from './connections/connections.controller.js';
-import { ConnectionsService } from './connections/connections.service.js';
 import type { PlatformConfig } from './config.js';
-import { createIndexes, MODEL } from './domain/models.js';
+import { createIndexes } from './domain/models.js';
+import { PlatformModule } from './platform.module.js';
 import { PoliciesController } from './policies/policies.controller.js';
-import { PoliciesService } from './policies/policies.service.js';
 import { ApprovalsService } from './runs/approvals.service.js';
-import { RunToolsService } from './runs/run-tools.js';
 import { ApprovalsController, RunsController } from './runs/runs.controller.js';
 import { RunsService } from './runs/runs.service.js';
 import { SpecsController } from './specs/specs.controller.js';
-import { SpecsService } from './specs/specs.service.js';
 import { AdminTenantsController, TenantController } from './tenants/tenants.controller.js';
 import { TenantsService } from './tenants/tenants.service.js';
 
@@ -76,25 +68,17 @@ export class Lifecycle implements OnModuleInit, OnApplicationShutdown {
   }
 }
 
-/** Replacements for tests: the e2e suite runs agent runs against a scripted model. */
-export interface AppOverrides {
-  llm?: LLMProvider;
-}
-
+/**
+ * The HTTP API. Shared domain code comes from PlatformModule; agent runs are queued here and
+ * executed by the worker program (WorkerModule), never inside the API process (Step 4.4a).
+ */
 @Module({})
 export class AppModule {
   /** Built from an already-validated config, so nothing below reads process.env directly. */
-  static register(config: PlatformConfig, overrides: AppOverrides = {}): DynamicModule {
+  static register(config: PlatformConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [
-        CoreModule.register(config),
-        MongooseModule.forRoot(config.MONGO_URI, {
-          dbName: config.PLATFORM_MONGO_DB,
-          autoIndex: false,
-        }),
-        MongooseModule.forFeature(Object.values(MODEL)),
-      ],
+      imports: [PlatformModule.register(config)],
       controllers: [
         HealthController,
         AdminTenantsController,
@@ -110,31 +94,8 @@ export class AppModule {
       providers: [
         // Global: every route needs a key unless it is marked @Public().
         { provide: APP_GUARD, useClass: PlatformAuthGuard },
-        {
-          provide: TOOL_INDEX,
-          useFactory: (connection: Connection) => {
-            if (!connection.db) throw new Error('MongoDB connection has no database yet.');
-            return new ToolIndex(connection.db, new OllamaEmbeddingProvider(config.embedding));
-          },
-          inject: [getConnectionToken()],
-        },
         TenantsService,
-        SpecsService,
-        ConnectionsService,
         CallsService,
-        {
-          provide: AGENT_LLM,
-          useValue:
-            overrides.llm ??
-            new OpenAICompatibleProvider({
-              baseURL: config.llm.baseURL,
-              apiKey: config.llm.apiKey,
-              model: config.llm.model,
-            }),
-        },
-        AuditLog,
-        PoliciesService,
-        RunToolsService,
         RunsService,
         ApprovalsService,
         Lifecycle,

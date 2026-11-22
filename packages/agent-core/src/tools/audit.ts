@@ -11,6 +11,15 @@ import { createHash } from 'node:crypto';
 import type { ToolErrorCode } from './errors.js';
 import type { SafetyClass } from './tool.js';
 
+/**
+ * Thrown by `ToolAuditor.started` when this exact write (same run, call id and arguments) has
+ * already started once: the run is being retried after a crash, and the first attempt may have
+ * reached the API. The executor does not run it again (Step 4.4a).
+ */
+export class WriteAlreadyStartedError extends Error {
+  override readonly name = 'WriteAlreadyStartedError';
+}
+
 /** What the executor knows about a call. Who asked and why is added by the app's adapter. */
 export interface AuditedCall {
   callId: string;
@@ -28,7 +37,10 @@ export interface AuditOutcome {
 }
 
 export interface ToolAuditor {
-  /** Before a write runs. Throwing refuses the write with `audit_unavailable`. */
+  /**
+   * Before a write runs. Throwing refuses the write: `WriteAlreadyStartedError` gives
+   * `outcome_unknown`, any other error `audit_unavailable`.
+   */
   started(call: AuditedCall): Promise<void>;
   /**
    * After every call. Should not throw; if it does, the executor ignores the error, because the

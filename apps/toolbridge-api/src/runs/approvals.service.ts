@@ -93,7 +93,7 @@ export class ApprovalsService {
     );
     if (!decided) throw new ConflictException('This approval is already decided.');
 
-    await this.runs.resume(prepared, {
+    await this.runs.resume(tenantId, prepared, card._id, {
       decision,
       approverId: input.approverId,
       ...(input.reason !== undefined && { reason: input.reason }),

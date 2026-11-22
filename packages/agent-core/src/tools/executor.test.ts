@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { hashArguments, type ToolAuditor } from './audit.js';
+import { hashArguments, type ToolAuditor, WriteAlreadyStartedError } from './audit.js';
 import { ToolExecutionError } from './errors.js';
 import { type RetryEvent, ToolExecutor, truncateResult } from './executor.js';
 import { ToolRegistry } from './registry.js';
@@ -242,6 +242,18 @@ describe('ToolExecutor with an auditor', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'audit_unavailable' } });
     expect(write.calls()).toBe(0);
     expect(events.at(-1)).toBe(`finished refund_thing audit_unavailable ${hash}`);
+  });
+
+  it('never runs a write again that already started once (a retried run)', async () => {
+    const write = flakyTool('refund_thing', 'write', 0, serverError);
+    const auditor: ToolAuditor = {
+      started: () => Promise.reject(new WriteAlreadyStartedError('started before')),
+      finished: () => Promise.resolve(),
+    };
+    const executor = new ToolExecutor(new ToolRegistry([write.tool]), { audit: auditor });
+    const result = await executor.run(call('refund_thing', '{"id":"a"}'));
+    expect(result).toMatchObject({ ok: false, error: { code: 'outcome_unknown' } });
+    expect(write.calls()).toBe(0);
   });
 
   it('records reads and refused calls once, after the fact', async () => {

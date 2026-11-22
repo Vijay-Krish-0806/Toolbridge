@@ -1,6 +1,6 @@
 # ADR-0031: Approval records and in-process runs
 
-- **Status:** Accepted
+- **Status:** Accepted; in-process runs and the startup rule are superseded by ADR 0034 (Step 4.4a)
 - **Date:** 2026-11-22
 
 ## Context

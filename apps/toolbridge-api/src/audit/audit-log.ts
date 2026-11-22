@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { AuditedCall, AuditOutcome, ToolAuditor } from '@toolbridge/agent-core';
+import {
+  type AuditedCall,
+  type AuditOutcome,
+  type ToolAuditor,
+  WriteAlreadyStartedError,
+} from '@toolbridge/agent-core';
 import { type Model, Types } from 'mongoose';
 
 import { mongooseCollection } from '../common/mongoose-collection.js';
@@ -87,7 +92,16 @@ export class AuditLog {
     });
     return {
       started: async (call) => {
-        await this.append(tenantId, { ...row(call), phase: 'started', at: new Date() });
+        try {
+          await this.append(tenantId, { ...row(call), phase: 'started', at: new Date() });
+        } catch (error) {
+          // The unique index on started rows: this exact write already started in an earlier
+          // attempt of the run (the worker died or the leg was retried). Never run it twice.
+          if (error instanceof Error && 'code' in error && error.code === 11000) {
+            throw new WriteAlreadyStartedError(`Call ${call.callId} already started in this run.`);
+          }
+          throw error;
+        }
       },
       finished: async (call: AuditedCall, outcome: AuditOutcome) => {
         try {

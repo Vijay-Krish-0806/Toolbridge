@@ -5,8 +5,8 @@
  *   twice (two approvers racing, and a second approval after an API restart);
  * - idempotency at the approval level: one card, one decision, one write;
  * - tenant isolation: another tenant cannot see, approve or reject a run or its card.
- * Also: self-approval of a high-risk action is refused, reject runs nothing, a run left
- * `running` by a stopped process is marked failed on startup, and (Step 4.10) every write can be
+ * Also: self-approval of a high-risk action is refused, reject runs nothing, and (Step 4.10)
+ * every write can be
  * traced in the audit log to a person and an approval, while other tenants see none of it, and
  * (Step 4.3b, required: deny by default) a spec without a policy offers and runs no tools.
  *
@@ -24,7 +24,6 @@ import {
   type LLMProvider,
   type StreamEvent,
 } from '@toolbridge/agent-core';
-import mongoose from 'mongoose';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -221,7 +220,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await h.app.close();
+  await h.stop();
   upstream.closeAllConnections();
   upstream.close();
 });
@@ -404,39 +403,13 @@ describe('runs and approvals API', () => {
     await waitFor(alice.key, run.id, 'completed');
   });
 
-  it('survives an API restart: approve after restart runs the write once; a second approval does not', async () => {
+  it('survives a restart of API and worker: approve after restart runs the write once; a second approval does not', async () => {
     const before = refunds.length;
     const { run, card } = await pausedRefund(alice);
 
-    // A run the old process was still executing when it died (written straight to the database).
-    const connection = await mongoose
-      .createConnection(h.config.MONGO_URI, { dbName: h.config.PLATFORM_MONGO_DB })
-      .asPromise();
-    const now = new Date();
-    await connection.collection('runs').insertOne({
-      _id: 'interrupted-run' as never,
-      tenantId: new mongoose.Types.ObjectId(alice.id),
-      specId: new mongoose.Types.ObjectId(alice.specId),
-      message: 'refund ORD-9 100',
-      principal: { userId: 'u1', role: 'support' },
-      credentialMode: 'service',
-      status: 'running',
-      approvalId: null,
-      answer: null,
-      stopReason: null,
-      usage: null,
-      error: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await connection.close();
-
-    // Restart: a new app (new MongoDB connection, new checkpointer, new model) on the same data.
-    await h.app.close();
+    // Restart: a new API and worker (new connections, new checkpointer, new model), same data.
+    await h.stop();
     h = await startHarness({}, { keepDatabase: true, llm: new RefundModel() });
-
-    const interrupted = body<RunView>(await as(alice.key).get('/runs/interrupted-run').expect(200));
-    expect(interrupted.status).toBe('failed');
 
     await as(alice.key)
       .post(`/approvals/${card.id}/approve`)

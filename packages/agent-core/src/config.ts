@@ -12,6 +12,11 @@ const envSchema = z.object({
    * so this must match the model's num_ctx. Code uses it as a token budget, not to configure the model.
    */
   LLM_CONTEXT_LENGTH: z.coerce.number().int().min(2048).default(16_384),
+  /**
+   * Most tokens the model may write per call, reasoning included (Step 4.4a). Without a cap a
+   * local model once streamed for over 20 minutes; a stream that keeps going never times out.
+   */
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).default(4096),
 });
 
 export interface LLMConfig {
@@ -19,6 +24,7 @@ export interface LLMConfig {
   model: string;
   apiKey: string;
   contextLength: number;
+  maxOutputTokens: number;
 }
 
 /** Validates the LLM settings once at startup, so a bad config fails fast with a clear message. */
@@ -27,12 +33,14 @@ export function loadLLMConfig(env: NodeJS.ProcessEnv = process.env): LLMConfig {
   if (!result.success) {
     throw new Error(`Invalid LLM configuration:\n${z.prettifyError(result.error)}`);
   }
-  const { LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, LLM_CONTEXT_LENGTH } = result.data;
+  const { LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, LLM_CONTEXT_LENGTH, LLM_MAX_OUTPUT_TOKENS } =
+    result.data;
   return {
     baseURL: LLM_BASE_URL,
     model: LLM_MODEL,
     apiKey: LLM_API_KEY,
     contextLength: LLM_CONTEXT_LENGTH,
+    maxOutputTokens: LLM_MAX_OUTPUT_TOKENS,
   };
 }
 

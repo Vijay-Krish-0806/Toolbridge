@@ -18,16 +18,20 @@ export {
   type AuditedCall,
   type AuditOutcome,
   type ToolAuditor,
+  WriteAlreadyStartedError,
 } from './tools/audit.js';
 export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/errors.js';
 export { HostApiClient, type HostApiOptions } from './host-api/client.js';
 export { createHostStoreTools } from './host-api/tools.js';
 export { runAgent } from './agent/loop.js';
 export {
+  continueAgentRun,
+  durableRunState,
   resumeAgentRun,
   runAgentGraph,
   startAgentRun,
   type AgentRunOutcome,
+  type DurableRunState,
   type DurableRunInput,
   type ResumeRunInput,
 } from './agent/graph/run-graph.js';

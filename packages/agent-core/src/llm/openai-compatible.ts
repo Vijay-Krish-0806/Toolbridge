@@ -14,6 +14,12 @@ export interface OpenAICompatibleOptions {
   model: string;
   /** Per-request timeout. Local models on a small GPU are slow, so the default is generous. */
   timeoutMs?: number;
+  /**
+   * Most tokens the model may write per call (`max_tokens`), reasoning included on Ollama.
+   * Step 4.4a: a stream that keeps producing never hits `timeoutMs`, so this is what bounds one
+   * call's length. Unset means the server's own default (often unlimited).
+   */
+  maxOutputTokens?: number;
 }
 
 /**
@@ -23,6 +29,7 @@ export interface OpenAICompatibleOptions {
 export class OpenAICompatibleProvider implements LLMProvider {
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly maxOutputTokens: number | undefined;
 
   /**
    * Creates the SDK client once and reuses it for every request. The SDK retries failed
@@ -30,6 +37,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
    */
   constructor(options: OpenAICompatibleOptions) {
     this.model = options.model;
+    this.maxOutputTokens = options.maxOutputTokens;
     this.client = new OpenAI({
       baseURL: options.baseURL,
       apiKey: options.apiKey,
@@ -40,10 +48,10 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
   /** Sends one request, waits for the whole answer, and converts it to our GenerateResult. */
   async generate(request: GenerateRequest): Promise<GenerateResult> {
-    const completion = await this.client.chat.completions.create({
-      ...this.toWireRequest(request),
-      stream: false,
-    });
+    const completion = await this.client.chat.completions.create(
+      { ...this.toWireRequest(request), stream: false },
+      { signal: request.signal },
+    );
     return fromWireCompletion(completion);
   }
 
@@ -54,11 +62,14 @@ export class OpenAICompatibleProvider implements LLMProvider {
    * `include_usage` asks the server for a final chunk with token counts.
    */
   async *stream(request: GenerateRequest): AsyncIterable<StreamEvent> {
-    const chunks = await this.client.chat.completions.create({
-      ...this.toWireRequest(request),
-      stream: true,
-      stream_options: { include_usage: true },
-    });
+    const chunks = await this.client.chat.completions.create(
+      {
+        ...this.toWireRequest(request),
+        stream: true,
+        stream_options: { include_usage: true },
+      },
+      { signal: request.signal },
+    );
     const accumulator = new ChunkAccumulator();
     for await (const chunk of chunks) {
       yield* accumulator.push(chunk);
@@ -74,6 +85,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
       messages: toWireMessages(request.messages),
       // Some servers reject an empty tools array, so leave the field out instead.
       ...(tools.length > 0 && { tools: toWireTools(tools) }),
+      ...(this.maxOutputTokens !== undefined && { max_tokens: this.maxOutputTokens }),
     };
   }
 }

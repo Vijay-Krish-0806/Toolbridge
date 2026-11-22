@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import type { Principal, ToolAuthorizer } from '../agent/access.js';
 import type { ToolCall } from '../llm/types.js';
-import { type AuditedCall, hashArguments, type ToolAuditor } from './audit.js';
+import {
+  type AuditedCall,
+  hashArguments,
+  type ToolAuditor,
+  WriteAlreadyStartedError,
+} from './audit.js';
 import {
   ToolCancelledError,
   type ToolError,
@@ -165,7 +170,15 @@ export class ToolExecutor {
     if (audit && tool.safety === 'write') {
       try {
         await audit.audit.started(audit.entry);
-      } catch {
+      } catch (error) {
+        if (error instanceof WriteAlreadyStartedError) {
+          // Never twice: the first attempt may have reached the API before the process died.
+          return fail(
+            'outcome_unknown',
+            'This action was already started once and may have been done. It was not run again; ' +
+              'check the current state before trying again.',
+          );
+        }
         return fail(
           'audit_unavailable',
           'The action could not be recorded in the audit log, so it was not run. Try again later.',

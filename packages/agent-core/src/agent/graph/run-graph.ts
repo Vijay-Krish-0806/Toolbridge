@@ -29,7 +29,20 @@ export type AgentRunOutcome =
 export interface DurableRunInput extends AgentRunInput {
   runId: string;
   checkpointer: BaseCheckpointSaver;
+  /**
+   * Stops the run (Step 4.4a: a leg's time limit, or a cancel). LangGraph passes it to every
+   * node as `config.signal`, and our nodes hand it to the model request and the tool calls.
+   * The run then throws; work saved in earlier checkpoints is kept.
+   */
+  signal?: AbortSignal;
 }
+
+/**
+ * Where a durable run stands, read from its checkpoints: `new` (no checkpoint yet: start it),
+ * `unfinished` (stopped half-way because a process died or a leg failed: continue it), or the
+ * same outcome a leg returns (paused on a card, with the card; or finished, with the result).
+ */
+export type DurableRunState = { status: 'new' } | { status: 'unfinished' } | AgentRunOutcome;
 
 /**
  * Continuing a paused run. The conversation is NOT passed again: it is in the checkpoint. The
@@ -99,6 +112,40 @@ export async function resumeAgentRun(input: ResumeRunInput): Promise<AgentRunOut
   return outcomeOf(graph, input.runId);
 }
 
+/**
+ * Continues a run that stopped half-way, from its last checkpoint (Step 4.4a: a worker died, or
+ * a leg failed and is retried). Input `null` tells LangGraph "no new input: finish the work
+ * that is due". Nodes that completed in the interrupted super-step are not run again (their
+ * writes were saved), but the node that was running starts over: that is why a write that had
+ * already started is refused by the audit guard instead of being repeated.
+ */
+export async function continueAgentRun(
+  input: Omit<DurableRunInput, 'messages'>,
+): Promise<AgentRunOutcome> {
+  const graph = durableGraph(input.checkpointer);
+  const config = { ...runConfig(input), configurable: { thread_id: input.runId } };
+  await drive(graph, null, config, input.onEvent);
+  return outcomeOf(graph, input.runId);
+}
+
+/**
+ * Reads a run's state from its checkpoints, so a worker knows which of start, continue or
+ * resume to call. `next` lists the nodes due to run; empty means the graph reached its end.
+ * Before -> after: a thread paused on a card -> `{ status: 'waiting_for_approval', request }`;
+ * an unknown id -> `{ status: 'new' }`.
+ */
+export async function durableRunState(
+  checkpointer: BaseCheckpointSaver,
+  runId: string,
+): Promise<DurableRunState> {
+  const graph = durableGraph(checkpointer);
+  const snapshot = await graph.getState({ configurable: { thread_id: runId } });
+  if (snapshot.createdAt === undefined) return { status: 'new' };
+  const paused = snapshot.tasks.some((task) => task.interrupts.length > 0);
+  if (!paused && snapshot.next.length > 0) return { status: 'unfinished' };
+  return outcomeOf(graph, runId);
+}
+
 /** The compiled graph for one checkpointer, built on first use. */
 function durableGraph(checkpointer: BaseCheckpointSaver): AgentGraph {
   let graph = durableGraphs.get(checkpointer);
@@ -117,7 +164,7 @@ function durableGraph(checkpointer: BaseCheckpointSaver): AgentGraph {
  * so the cap is only a backstop: 3 steps per iteration (callModel, approvalGate, executeTools)
  * plus selectTools and finalize, plus some room.
  */
-function runConfig(input: Omit<AgentRunInput, 'messages'>) {
+function runConfig(input: Omit<AgentRunInput, 'messages'> & { signal?: AbortSignal }) {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   // Every key is present (some may be undefined): LangGraph's context type requires that.
   const context = {
@@ -133,6 +180,11 @@ function runConfig(input: Omit<AgentRunInput, 'messages'>) {
     context,
     streamMode: ['custom', 'values'] as ['custom', 'values'],
     recursionLimit: limits.maxIterations * 3 + 4,
+    // DURABILITY "sync": each checkpoint is saved before the next step starts (the default,
+    // "async", saves while the next step already runs, so a crash can lose the latest one).
+    // Without a checkpointer there is nothing to save, so the option is harmless there.
+    durability: 'sync' as const,
+    ...(input.signal && { signal: input.signal }),
   };
 }
 

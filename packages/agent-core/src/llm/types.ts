@@ -50,6 +50,8 @@ export type ChatMessage = SystemMessage | UserMessage | AssistantMessage | ToolR
 export interface GenerateRequest {
   messages: ChatMessage[];
   tools?: ToolDefinition[];
+  /** Aborts the request (for example a run's time limit or a cancel, Step 4.4a). */
+  signal?: AbortSignal;
 }
 
 /** Why the model stopped. Don't use it to detect tool calls: check `message.toolCalls` instead. */

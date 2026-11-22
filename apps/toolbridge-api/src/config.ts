@@ -40,6 +40,26 @@ const envSchema = z.object({
   /** The platform's own database, separate from the host app's. */
   PLATFORM_MONGO_DB: z.string().min(1).default('toolbridge'),
   PLATFORM_PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
+  /** Redis for the run queue (Step 4.4a). Local Docker publishes it on 127.0.0.1 only. */
+  REDIS_HOST: z.string().min(1).default('127.0.0.1'),
+  REDIS_PORT: z.coerce.number().int().min(1).max(65_535).default(6379),
+  /** Prefix of every queue key in Redis, so separate environments (and test runs) never mix. */
+  RUN_QUEUE_PREFIX: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,40}$/)
+    .default('toolbridge'),
+  /**
+   * Longest one run leg may take (start to pause or end, or resume to the next pause or end).
+   * Past it the leg is aborted and the run fails with "time limit" (Step 4.4a). Default 10 min.
+   */
+  RUN_LEG_TIMEOUT_MS: z.coerce.number().int().min(1000).default(600_000),
+  /** Legs one worker process runs at the same time. */
+  WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
+  /**
+   * How long a worker's claim on a job lasts without renewal. A worker that dies stops renewing,
+   * so another worker takes the job over after about this long (BullMQ default 30 s).
+   */
+  WORKER_LOCK_MS: z.coerce.number().int().min(500).default(30_000),
   /**
    * Creates tenants. Compared in constant time. At least 32 characters, and never the example
    * value, so a weak or copied key fails at startup instead of in production.
