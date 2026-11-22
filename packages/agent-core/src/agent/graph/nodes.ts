@@ -124,25 +124,35 @@ export function approvalGate(state: AgentStateValue, config: NodeConfig): AgentS
   const calls = lastToolCalls(state);
   if (!approvals) return { approvalOutcome: 'not_needed' };
 
-  const checks: CallToCheck[] = calls.map((call) => ({
+  // Only calls to tools on this run's menu can run; the others are refused in executeTools
+  // ("not available"), so they need no approval. Without this, a spec with no policy (empty
+  // menu) would put a card in the inbox for every call the model invents, for nothing.
+  const offered = new Set(state.tools.map((tool) => tool.name));
+  const runnable = calls.filter((call) => offered.has(call.name));
+  const checks: CallToCheck[] = runnable.map((call) => ({
     name: call.name,
-    // An unknown tool is treated as a write: the strictest choice. It will not run anyway.
+    // An offered tool missing from the registry cannot happen; treat it as a write to be safe.
     safety: registry.get(call.name)?.safety ?? 'write',
     args: parseArgs(call.arguments),
   }));
   const batch = approvals.evaluate(checks);
   if (batch.level === 'none') return { approvalOutcome: 'not_needed' };
+  // Each call's own level, in the order of `calls`; not-offered calls get `none` with a reason.
+  const decided = new Map(runnable.map((call, i) => [call.id, batch.calls[i]]));
 
   const request: ApprovalRequest = {
     level: batch.level,
     requesterId: access?.principal.userId ?? '',
-    calls: calls.map((call, i) => ({
-      id: call.id,
-      name: call.name,
-      arguments: call.arguments,
-      level: batch.calls[i]?.level ?? 'required',
-      reason: batch.calls[i]?.reason ?? '',
-    })),
+    calls: calls.map((call) => {
+      const own = decided.get(call.id);
+      return {
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+        level: own?.level ?? 'none',
+        reason: own?.reason ?? 'Not offered to this run, so it will be refused, not run.',
+      };
+    }),
   };
   // First pass: pauses the run here. On resume: returns the person's answer.
   const answer: unknown = interrupt(request);

@@ -40,6 +40,13 @@ export function hostOverrides(): Record<string, unknown> {
   ) as Record<string, unknown>;
 }
 
+/** The host store role policy (owner, support, warehouse, plus approval rules). */
+export function hostPolicy(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL('../../../specs/host-store.policy.json', import.meta.url), 'utf8'),
+  ) as Record<string, unknown>;
+}
+
 export interface Harness {
   app: INestApplication;
   http: App;

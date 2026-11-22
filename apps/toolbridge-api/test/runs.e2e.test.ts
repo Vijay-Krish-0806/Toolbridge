@@ -7,7 +7,8 @@
  * - tenant isolation: another tenant cannot see, approve or reject a run or its card.
  * Also: self-approval of a high-risk action is refused, reject runs nothing, a run left
  * `running` by a stopped process is marked failed on startup, and (Step 4.10) every write can be
- * traced in the audit log to a person and an approval, while other tenants see none of it.
+ * traced in the audit log to a person and an approval, while other tenants see none of it, and
+ * (Step 4.3b, required: deny by default) a spec without a policy offers and runs no tools.
  *
  * A scripted model stands in for the LLM (decides from the conversation, so it works across
  * restarts), and a local fake API stands in for the host store and counts every refund it gets.
@@ -32,6 +33,7 @@ import {
   createTenant,
   type Harness,
   hostOverrides,
+  hostPolicy,
   hostSpec,
   startHarness,
 } from './harness.js';
@@ -45,8 +47,11 @@ const TOKEN = 'runs-e2e-token';
  */
 class RefundModel implements LLMProvider {
   private calls = 0;
+  /** The tool names offered on each model call, in order. */
+  readonly offered: string[][] = [];
 
   generate(request: GenerateRequest): Promise<GenerateResult> {
+    this.offered.push((request.tools ?? []).map((t) => t.name));
     const last = request.messages.at(-1);
     if (last?.role === 'tool') {
       return Promise.resolve({
@@ -143,8 +148,14 @@ interface CardView {
   calls: { name: string; arguments: string; level: string }[];
 }
 
-/** A tenant with the host spec, a connection to the fake API, and refunds_request enabled. */
-async function tenantWithSpec(name: string): Promise<{ key: string; id: string; specId: string }> {
+/**
+ * A tenant with the host spec, a connection to the fake API, refunds_request enabled and (unless
+ * `withPolicy` is false) the host store's role policy uploaded for the spec.
+ */
+async function tenantWithSpec(
+  name: string,
+  withPolicy = true,
+): Promise<{ key: string; id: string; specId: string }> {
   const tenant = await createTenant(h.http, name);
   const spec = await as(tenant.key)
     .post('/specs')
@@ -159,6 +170,9 @@ async function tenantWithSpec(name: string): Promise<{ key: string; id: string; 
     .patch(`/specs/${specId}/tools/refunds_request`)
     .send({ enabled: true })
     .expect(200);
+  if (withPolicy) {
+    await as(tenant.key).put(`/specs/${specId}/policy`).send({ policy: hostPolicy() }).expect(200);
+  }
   return { ...tenant, specId };
 }
 
@@ -193,13 +207,15 @@ async function pausedRefund(
   return { run, card };
 }
 
+let model: RefundModel;
 let alice: { key: string; id: string; specId: string };
 let bob: { key: string; id: string; specId: string };
 
 beforeAll(async () => {
   upstream = await startUpstream();
   baseUrl = `http://localhost:${String((upstream.address() as AddressInfo).port)}`;
-  h = await startHarness({}, { llm: new RefundModel() });
+  model = new RefundModel();
+  h = await startHarness({}, { llm: model });
   alice = await tenantWithSpec('Alice');
   bob = await tenantWithSpec('Bob');
 });
@@ -263,6 +279,7 @@ describe('runs and approvals API', () => {
         toolName: 'refunds_request',
         actor: { kind: 'user', userId: 'u1', role: 'support' },
         credentialMode: 'service',
+        policyVersion: 1,
         argsHash: sha,
         approval: { id: card.id, level: 'high', requesterId: 'u1', approverId: 'u2' },
       });
@@ -278,6 +295,29 @@ describe('runs and approvals API', () => {
     );
     const bobsAll = body<AuditRow[]>(await as(bob.key).get('/audit?limit=200').expect(200));
     expect(bobsAll.filter((r) => r.runId === run.id)).toEqual([]);
+  });
+
+  it('a spec without a policy offers and runs no tools (deny by default)', async () => {
+    const carol = await tenantWithSpec('Carol', false);
+    await as(carol.key).get(`/specs/${carol.specId}/policy`).expect(404);
+    const before = refunds.length;
+    const firstCall = model.offered.length;
+    const started = await as(carol.key)
+      .post('/runs')
+      .send({
+        specId: carol.specId,
+        message: 'refund ORD-7 32893',
+        principal: { userId: 'u1', role: 'owner' }, // even the owner role gets nothing
+      })
+      .expect(202);
+    const runId = body<{ runId: string }>(started).runId;
+    const done = await waitFor(carol.key, runId, 'completed');
+
+    // Offered nothing on every model call; the refund the model asked for anyway was refused.
+    expect(model.offered.slice(firstCall)).toEqual([[], []]);
+    expect(done.answer).toContain('not available');
+    expect(refunds.length - before).toBe(0);
+    expect(body<AuditRow[]>(await as(carol.key).get(`/audit?runId=${runId}`))).toEqual([]);
   });
 
   it('audits a direct tool call with the API key as the actor and no approval', async () => {

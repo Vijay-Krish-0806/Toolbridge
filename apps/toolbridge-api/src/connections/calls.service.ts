@@ -66,6 +66,7 @@ export class CallsService {
       runId: null,
       actor: { kind: 'api_key', keyId },
       credentialMode: 'service',
+      policyVersion: null, // direct calls have no role, so no role policy applies
     });
     return new ToolExecutor(new ToolRegistry(tools), { audit }).run({
       id: randomUUID(),

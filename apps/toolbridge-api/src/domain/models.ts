@@ -167,6 +167,31 @@ export interface Approval {
   createdAt: Date;
 }
 
+/**
+ * One uploaded version of a spec's role policy (Step 4.3b, ADR 0033). APPEND-ONLY: every upload
+ * inserts a new version and nothing is ever changed or deleted, so the versions are also the
+ * audit trail of policy changes. The current policy is the highest version; a spec with no
+ * version at all denies every tool.
+ */
+export interface PolicyVersion {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  specId: Types.ObjectId;
+  version: number;
+  /**
+   * The validated policy as JSON text. Text, not a nested document: role names may contain
+   * characters (such as "." or "$") that MongoDB does not allow in field names.
+   */
+  document: string;
+  /** sha256 of `document`, to compare versions at a glance. */
+  policyHash: string;
+  /** The spec version the policy was checked against when uploaded ("tied to the spec version"). */
+  specVersion: number;
+  /** Who uploaded it: the tenant API key (no user identity on this API until Step 4.4b). */
+  createdBy: { kind: 'api_key'; keyId: string };
+  createdAt: Date;
+}
+
 /** Who a tool call was made for: a host user (agent runs), or a tenant API key (direct calls). */
 export type AuditActor =
   { kind: 'user'; userId: string; role: string } | { kind: 'api_key'; keyId: string };
@@ -194,6 +219,8 @@ export interface AuditEntry {
   /** `ok` or the error code; null on a `started` row. */
   status: string | null;
   durationMs: number | null;
+  /** The spec's policy version that authorized the call; null when the spec had no policy. */
+  policyVersion: number | null;
   /** The approval that let this call run, or null (reads, refusals, direct calls). */
   approval: {
     id: Types.ObjectId;
@@ -325,10 +352,27 @@ const auditSchema = new Schema<AuditEntry>({
   argsHash: { type: String, required: true },
   status: { type: String, default: null },
   durationMs: { type: Number, default: null },
+  policyVersion: { type: Number, default: null },
   approval: { type: Schema.Types.Mixed, default: null },
 });
 auditSchema.index({ tenantId: 1, at: -1 });
 auditSchema.index({ tenantId: 1, runId: 1, at: 1 });
+
+const policyVersionSchema = new Schema<PolicyVersion>({
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  specId: { type: Schema.Types.ObjectId, required: true },
+  version: { type: Number, required: true },
+  document: { type: String, required: true },
+  policyHash: { type: String, required: true },
+  specVersion: { type: Number, required: true },
+  createdBy: {
+    kind: { type: String, enum: ['api_key'], required: true },
+    keyId: { type: String, required: true },
+  },
+  createdAt: { type: Date, required: true },
+});
+// Unique: two uploads racing for the same next version cannot both win.
+policyVersionSchema.index({ tenantId: 1, specId: 1, version: -1 }, { unique: true });
 
 /** Model names and schemas in one list, shared by the Nest modules and index creation. */
 export const MODEL = {
@@ -341,6 +385,7 @@ export const MODEL = {
   Run: { name: 'Run', schema: runSchema },
   Approval: { name: 'Approval', schema: approvalSchema },
   AuditEntry: { name: 'AuditEntry', schema: auditSchema },
+  PolicyVersion: { name: 'PolicyVersion', schema: policyVersionSchema },
 } as const;
 
 /**

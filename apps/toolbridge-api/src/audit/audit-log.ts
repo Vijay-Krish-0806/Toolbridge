@@ -18,6 +18,8 @@ export interface AuditContext {
   runId: string | null;
   actor: AuditActor;
   credentialMode: CredentialMode;
+  /** The spec's policy version in force (null = no policy, deny-all; or a direct call). */
+  policyVersion: number | null;
   /**
    * The approval decided for this leg. It is stamped only on the calls its card lists (matched
    * by call id), so reads the model makes later in the same leg are not shown as approved.
@@ -72,6 +74,7 @@ export class AuditLog {
       argsHash: call.argsHash,
       status: null,
       durationMs: null,
+      policyVersion: context.policyVersion,
       approval:
         context.approval && approvedCalls.has(call.callId)
           ? {
@@ -155,6 +158,7 @@ function view(row: AuditEntry): AuditView {
     argsHash: row.argsHash,
     status: row.status,
     durationMs: row.durationMs,
+    policyVersion: row.policyVersion,
     approval: row.approval ? { ...row.approval, id: row.approval.id.toHexString() } : null,
   };
 }

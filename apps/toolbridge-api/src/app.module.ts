@@ -31,6 +31,8 @@ import {
 import { ConnectionsService } from './connections/connections.service.js';
 import type { PlatformConfig } from './config.js';
 import { createIndexes, MODEL } from './domain/models.js';
+import { PoliciesController } from './policies/policies.controller.js';
+import { PoliciesService } from './policies/policies.service.js';
 import { ApprovalsService } from './runs/approvals.service.js';
 import { RunToolsService } from './runs/run-tools.js';
 import { ApprovalsController, RunsController } from './runs/runs.controller.js';
@@ -103,6 +105,7 @@ export class AppModule {
         RunsController,
         ApprovalsController,
         AuditController,
+        PoliciesController,
       ],
       providers: [
         // Global: every route needs a key unless it is marked @Public().
@@ -130,6 +133,7 @@ export class AppModule {
             }),
         },
         AuditLog,
+        PoliciesService,
         RunToolsService,
         RunsService,
         ApprovalsService,

@@ -203,6 +203,28 @@ describe('approval gate (durable runs)', () => {
     expect(read.runs()).toBe(1);
   });
 
+  it('does not ask for approval of a call to a tool that was not offered; it is refused', async () => {
+    const { deps, write } = setup();
+    // The role may not use refunds, so the menu lacks it, but the model asks for one anyway.
+    const access = {
+      principal: { userId: 'u1', role: 'warehouse' },
+      authorizer: {
+        authorize: (_p: unknown, name: string) =>
+          name === 'refunds_request'
+            ? ({ allowed: false, reason: 'not for warehouse' } as const)
+            : ({ allowed: true } as const),
+      },
+    };
+    const outcome = await startAgentRun({
+      ...deps,
+      access,
+      llm: new FakeProvider([turn(refund), answer]),
+      messages: [{ role: 'user', content: 'refund ORD-7' }],
+    });
+    expect(outcome).toMatchObject({ status: 'finished', result: { answer: 'done' } });
+    expect(write.runs()).toBe(0);
+  });
+
   it('engines that cannot pause refuse approval rules instead of ignoring them', async () => {
     const { deps, write } = setup();
     const input = { ...deps, messages: [{ role: 'user' as const, content: 'refund' }] };

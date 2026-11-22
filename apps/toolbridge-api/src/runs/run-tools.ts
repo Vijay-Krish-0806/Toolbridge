@@ -12,10 +12,10 @@ import { createApprovalPolicy, createAuthorizer } from '@toolbridge/policy';
 import type { Types } from 'mongoose';
 
 import { type AuditContext, AuditLog } from '../audit/audit-log.js';
-import { OUTBOUND_HTTP, PLATFORM_CONFIG } from '../common/core.module.js';
-import type { PlatformConfig } from '../config.js';
+import { OUTBOUND_HTTP } from '../common/core.module.js';
 import { ConnectionsService } from '../connections/connections.service.js';
 import type { Spec } from '../domain/models.js';
+import { PoliciesService } from '../policies/policies.service.js';
 import { SpecsService } from '../specs/specs.service.js';
 
 /** Everything a run needs besides the model and the checkpointer: tools, identity, rules. */
@@ -33,7 +33,8 @@ export interface RunTools {
  *
  * Tools: the spec's current tools that the tenant has enabled and that are active (not in review,
  * not removed), calling the API with the spec's stored connection (credential mode `service`).
- * Access and approval rules: the platform policy file until Step 4.3b. The same authorizer is
+ * Access and approval rules: the spec's current stored policy (Step 4.3b), or deny-all when it
+ * has none, so a spec without a policy offers and runs no tools. The same authorizer is
  * given to the executor, so a forbidden call is refused even if it reached the executor
  * (defense in depth, Step 4.2). Every call is written to the audit log with this leg's run id,
  * user and (on a resumed leg) the decided approval; a write runs only after its row is saved.
@@ -41,11 +42,11 @@ export interface RunTools {
 @Injectable()
 export class RunToolsService {
   constructor(
-    @Inject(PLATFORM_CONFIG) private readonly config: PlatformConfig,
     @Inject(OUTBOUND_HTTP) private readonly client: SafeHttpClient,
     private readonly specs: SpecsService,
     private readonly connections: ConnectionsService,
     private readonly audit: AuditLog,
+    private readonly policies: PoliciesService,
   ) {}
 
   /**
@@ -67,6 +68,7 @@ export class RunToolsService {
       settings.filter((t) => t.enabled && t.status === 'active').map((t) => t.name),
     );
     const connection = await this.connections.forCall(tenantId, spec._id);
+    const { policy, version: policyVersion } = await this.policies.forRun(tenantId, spec);
 
     const tools = createOpenApiTools(
       compiled.tools.filter((t) => usable.has(t.name)),
@@ -78,7 +80,7 @@ export class RunToolsService {
       },
     );
     const registry = new ToolRegistry(tools);
-    const authorizer = createAuthorizer(this.config.policy);
+    const authorizer = createAuthorizer(policy);
     return {
       registry,
       executor: new ToolExecutor(registry, {
@@ -87,11 +89,12 @@ export class RunToolsService {
           runId: run.runId,
           actor: { kind: 'user', userId: principal.userId, role: principal.role },
           credentialMode: 'service',
+          policyVersion,
           ...(run.approval && { approval: run.approval }),
         }),
       }),
       access: { principal, authorizer },
-      approvals: createApprovalPolicy(this.config.policy),
+      approvals: createApprovalPolicy(policy),
     };
   }
 }
