@@ -290,3 +290,5 @@ The scope is frozen as of 2026-11-22. New ideas go in this list, not into the st
 - Checkpoint expiry (TTL): checkpoints and run records contain customer data from tool results.
 - Per-item approval decisions (approve some calls of a turn and reject others; Step 4.3 is all or nothing).
 - Pending-approval expiry: a waiting approval that nobody answers is rejected after a set time.
+- Approval for writes on the direct tool-call endpoint (`POST /specs/:id/tools/:name/call`, Step 2.6b): today a tenant API key can run a write there with no approval; Step 4.10 audits it with the key as the actor.
+- Database-level append-only audit log: an insert-only MongoDB role for the platform user, or a hash chain, instead of append-only by code only (Step 4.10).

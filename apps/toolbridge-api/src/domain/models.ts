@@ -167,6 +167,42 @@ export interface Approval {
   createdAt: Date;
 }
 
+/** Who a tool call was made for: a host user (agent runs), or a tenant API key (direct calls). */
+export type AuditActor =
+  { kind: 'user'; userId: string; role: string } | { kind: 'api_key'; keyId: string };
+
+/**
+ * One audit row (Step 4.10, ADR 0032). APPEND-ONLY: the platform only inserts and reads these.
+ * A write gets two rows: `started` (saved before the write runs; if it cannot be saved, the
+ * write does not run) and `finished`. A read or a refused call gets only `finished`.
+ * `argsHash` is sha256 of the exact argument string, so it can be compared with the approval card
+ * without storing customer data here.
+ */
+export interface AuditEntry {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  at: Date;
+  phase: 'started' | 'finished';
+  /** null for direct tool calls (no agent run). */
+  runId: string | null;
+  callId: string;
+  toolName: string;
+  safety: SafetyClass | null;
+  actor: AuditActor;
+  credentialMode: CredentialMode;
+  argsHash: string;
+  /** `ok` or the error code; null on a `started` row. */
+  status: string | null;
+  durationMs: number | null;
+  /** The approval that let this call run, or null (reads, refusals, direct calls). */
+  approval: {
+    id: Types.ObjectId;
+    level: ApprovalRequest['level'];
+    requesterId: string;
+    approverId: string;
+  } | null;
+}
+
 const tenantSchema = new Schema<Tenant>({
   name: { type: String, required: true },
   createdAt: { type: Date, required: true },
@@ -276,6 +312,24 @@ const approvalSchema = new Schema<Approval>({
 });
 approvalSchema.index({ tenantId: 1, status: 1, createdAt: 1 });
 
+const auditSchema = new Schema<AuditEntry>({
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  at: { type: Date, required: true },
+  phase: { type: String, enum: ['started', 'finished'], required: true },
+  runId: { type: String, default: null },
+  callId: { type: String, required: true },
+  toolName: { type: String, required: true },
+  safety: { type: String, enum: ['read', 'write', null], default: null },
+  actor: { type: Schema.Types.Mixed, required: true },
+  credentialMode: { type: String, enum: ['service'], required: true },
+  argsHash: { type: String, required: true },
+  status: { type: String, default: null },
+  durationMs: { type: Number, default: null },
+  approval: { type: Schema.Types.Mixed, default: null },
+});
+auditSchema.index({ tenantId: 1, at: -1 });
+auditSchema.index({ tenantId: 1, runId: 1, at: 1 });
+
 /** Model names and schemas in one list, shared by the Nest modules and index creation. */
 export const MODEL = {
   Tenant: { name: 'Tenant', schema: tenantSchema },
@@ -286,6 +340,7 @@ export const MODEL = {
   ApiConnection: { name: 'ApiConnection', schema: connectionSchema },
   Run: { name: 'Run', schema: runSchema },
   Approval: { name: 'Approval', schema: approvalSchema },
+  AuditEntry: { name: 'AuditEntry', schema: auditSchema },
 } as const;
 
 /**

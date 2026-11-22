@@ -8,6 +8,7 @@ export type ToolErrorCode =
   | 'blocked' // refused for safety before sending (private address, bad path, redirect)
   | 'cancelled' // the caller cancelled the call (for example an MCP client)
   | 'forbidden' // the person's role may not use this tool (Step 4.2): do not retry, explain
+  | 'audit_unavailable' // the write could not be recorded first, so it did not run (Step 4.10)
   | 'internal'; // a bug in our own tool code
 
 /** A failure in the normalized shape that goes back to the model. */

@@ -10,12 +10,10 @@ import type { Collection, Filter } from './tenant-scoped.js';
 export function mongooseCollection<T>(model: Model<T>): Collection<T> {
   const filterOf = (filter: Filter): QueryFilter<T> => filter;
   return {
-    find: (filter, sort) =>
-      model
-        .find(filterOf(filter))
-        .sort(sort ?? {})
-        .lean<T[]>()
-        .exec(),
+    find: (filter, sort, limit) => {
+      const query = model.find(filterOf(filter)).sort(sort ?? {});
+      return (limit === undefined ? query : query.limit(limit)).lean<T[]>().exec();
+    },
     findOne: (filter) => model.findOne(filterOf(filter)).lean<T>().exec(),
     insertOne: async (doc) => (await new model(doc).save()).toObject(),
     updateOne: async (filter, set) =>

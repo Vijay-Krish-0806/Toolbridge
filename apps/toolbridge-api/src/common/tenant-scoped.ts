@@ -13,7 +13,7 @@ export type Filter = Record<string, unknown>;
  * (mongooseCollection) implements it; tests can use a plain in-memory fake.
  */
 export interface Collection<T> {
-  find(filter: Filter, sort?: Record<string, 1 | -1>): Promise<T[]>;
+  find(filter: Filter, sort?: Record<string, 1 | -1>, limit?: number): Promise<T[]>;
   findOne(filter: Filter): Promise<T | null>;
   insertOne(doc: Omit<T, '_id'>): Promise<T>;
   /** Applies `$set`; returns how many documents matched. */
@@ -50,9 +50,9 @@ export class TenantScoped<T extends { tenantId: Types.ObjectId }> {
     }
   }
 
-  /** All matching documents of this tenant. */
-  find(filter: Filter = {}, sort?: Record<string, 1 | -1>): Promise<T[]> {
-    return this.collection.find(this.scope(filter), sort);
+  /** Matching documents of this tenant (at most `limit`, when given). */
+  find(filter: Filter = {}, sort?: Record<string, 1 | -1>, limit?: number): Promise<T[]> {
+    return this.collection.find(this.scope(filter), sort, limit);
   }
 
   /** One matching document of this tenant, or null (also when it belongs to someone else). */

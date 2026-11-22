@@ -43,7 +43,7 @@ export class ConnectionsController {
     @Param('toolName') toolName: string,
     @Body() dto: CallToolDto,
   ) {
-    return this.calls.call(caller.tenantId, specId, toolName, dto.arguments ?? {});
+    return this.calls.call(caller.tenantId, caller.keyId, specId, toolName, dto.arguments ?? {});
   }
 }
 

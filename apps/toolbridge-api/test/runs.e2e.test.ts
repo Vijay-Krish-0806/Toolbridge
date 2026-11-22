@@ -5,12 +5,14 @@
  *   twice (two approvers racing, and a second approval after an API restart);
  * - idempotency at the approval level: one card, one decision, one write;
  * - tenant isolation: another tenant cannot see, approve or reject a run or its card.
- * Also: self-approval of a high-risk action is refused, reject runs nothing, and a run left
- * `running` by a stopped process is marked failed on startup.
+ * Also: self-approval of a high-risk action is refused, reject runs nothing, a run left
+ * `running` by a stopped process is marked failed on startup, and (Step 4.10) every write can be
+ * traced in the audit log to a person and an approval, while other tenants see none of it.
  *
  * A scripted model stands in for the LLM (decides from the conversation, so it works across
  * restarts), and a local fake API stands in for the host store and counts every refund it gets.
  */
+import { createHash } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -123,6 +125,13 @@ interface RunView {
   error: string | null;
   credentialMode: string;
   principal: { userId: string; role: string };
+}
+interface AuditRow {
+  id: string;
+  phase: string;
+  runId: string | null;
+  status: string | null;
+  approval: { id: string } | null;
 }
 interface CardView {
   id: string;
@@ -239,6 +248,55 @@ describe('runs and approvals API', () => {
       .send({ approverId: 'u3' })
       .expect(409);
     expect(refunds.length - before).toBe(1);
+
+    // Step 4.10: the write is traced to the requester, the approver and the card, and its
+    // arguments hash matches the arguments the approver saw.
+    const audit = body<AuditRow[]>(
+      await as(alice.key).get(`/audit?runId=${run.id}&safety=write`).expect(200),
+    );
+    expect(audit.map((r) => r.phase)).toEqual(['finished', 'started']);
+    const sha = createHash('sha256')
+      .update(card.calls[0]?.arguments ?? '')
+      .digest('hex');
+    for (const row of audit) {
+      expect(row).toMatchObject({
+        toolName: 'refunds_request',
+        actor: { kind: 'user', userId: 'u1', role: 'support' },
+        credentialMode: 'service',
+        argsHash: sha,
+        approval: { id: card.id, level: 'high', requesterId: 'u1', approverId: 'u2' },
+      });
+    }
+    expect(audit[0]).toMatchObject({ status: 'ok' });
+    const byCard = body<AuditRow[]>(
+      await as(alice.key).get(`/audit?approvalId=${card.id}`).expect(200),
+    );
+    expect(byCard.map((r) => r.id).sort()).toEqual(audit.map((r) => r.id).sort());
+    // Another tenant sees none of it.
+    expect(body<AuditRow[]>(await as(bob.key).get(`/audit?runId=${run.id}`).expect(200))).toEqual(
+      [],
+    );
+    const bobsAll = body<AuditRow[]>(await as(bob.key).get('/audit?limit=200').expect(200));
+    expect(bobsAll.filter((r) => r.runId === run.id)).toEqual([]);
+  });
+
+  it('audits a direct tool call with the API key as the actor and no approval', async () => {
+    const before = refunds.length;
+    await as(alice.key)
+      .post(`/specs/${alice.specId}/tools/refunds_request/call`)
+      .send({ arguments: { orderId: 'ORD-8', amountCents: 500, reason: 'damaged' } })
+      .expect(200);
+    expect(refunds.length - before).toBe(1);
+    const [latest] = body<AuditRow[]>(
+      await as(alice.key).get('/audit?toolName=refunds_request&limit=1').expect(200),
+    );
+    expect(latest).toMatchObject({
+      phase: 'finished',
+      runId: null,
+      actor: { kind: 'api_key' },
+      approval: null,
+      status: 'ok',
+    });
   });
 
   it('two approvers at the same moment: one wins, the write runs once', async () => {

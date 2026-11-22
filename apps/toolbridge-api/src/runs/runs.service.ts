@@ -22,6 +22,7 @@ import {
 import { MongoSaver } from '@toolbridge/checkpoint-mongo';
 import type { Connection, Model, Types } from 'mongoose';
 
+import type { AuditContext } from '../audit/audit-log.js';
 import { AGENT_LLM } from '../common/core.module.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
@@ -123,10 +124,14 @@ export class RunsService implements OnModuleInit, BeforeApplicationShutdown {
     input: { specId: string; message: string; principal: Principal },
   ): Promise<{ runId: string; status: RunStatus }> {
     const spec = await this.specs.requireSpec(tenantId, input.specId);
-    const tools = await this.runTools.build(tenantId, spec, input.principal);
+    const runId = randomUUID();
+    const tools = await this.runTools.build(tenantId, spec, {
+      runId,
+      principal: input.principal,
+    });
     const now = new Date();
     const run = await this.runs(tenantId).insertOne({
-      _id: randomUUID(),
+      _id: runId,
       specId: spec._id,
       message: input.message,
       principal: { userId: input.principal.userId, role: input.principal.role },
@@ -164,15 +169,25 @@ export class RunsService implements OnModuleInit, BeforeApplicationShutdown {
   /**
    * Step 1 of continuing a run: checks it is waiting and rebuilds its dependencies from the run
    * record (the same principal as at the start). Changes nothing, so the caller can still back
-   * out (for example when it loses the race to decide the approval).
+   * out (for example when it loses the race to decide the approval). `approval` is the card
+   * being decided, so the audit rows of the calls it lists name it, the requester and approver.
    */
-  async prepareResume(tenantId: Types.ObjectId, runId: string): Promise<PreparedResume> {
+  async prepareResume(
+    tenantId: Types.ObjectId,
+    runId: string,
+    approval: NonNullable<AuditContext['approval']>,
+  ): Promise<PreparedResume> {
     const run = await this.require(tenantId, runId);
     if (run.status !== 'waiting_for_approval') {
       throw new ConflictException(`Run ${runId} is not waiting for approval.`);
     }
     const spec = await this.specs.requireSpec(tenantId, run.specId.toHexString());
-    return { tenantId, run, tools: await this.runTools.build(tenantId, spec, run.principal) };
+    const tools = await this.runTools.build(tenantId, spec, {
+      runId,
+      principal: run.principal,
+      approval,
+    });
+    return { tenantId, run, tools };
   }
 
   /**

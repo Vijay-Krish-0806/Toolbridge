@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Principal, ToolAuthorizer } from '../agent/access.js';
 import type { ToolCall } from '../llm/types.js';
+import { type AuditedCall, hashArguments, type ToolAuditor } from './audit.js';
 import {
   ToolCancelledError,
   type ToolError,
@@ -42,6 +43,11 @@ export interface ToolExecutorOptions {
    * holds even if the agent offered a forbidden tool by mistake, or a caller skips the agent.
    */
   authorizer?: ToolAuthorizer;
+  /**
+   * Step 4.10: when set, every call is reported to it, and a write runs only after its
+   * `started` record was saved (write-ahead, fail closed). See tools/audit.ts.
+   */
+  audit?: ToolAuditor;
 }
 
 /** Per-call options for `ToolExecutor.run`. */
@@ -61,6 +67,7 @@ export class ToolExecutor {
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly maxResultChars: number;
   private readonly authorizer: ToolAuthorizer | undefined;
+  private readonly audit: ToolAuditor | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -74,6 +81,7 @@ export class ToolExecutor {
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.maxResultChars = options.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
     this.authorizer = options.authorizer;
+    this.audit = options.audit;
   }
 
   /**
@@ -85,8 +93,48 @@ export class ToolExecutor {
    * valid) and an unknown name is refused the same way as a forbidden one.
    * `signal` lets the caller cancel (for example an MCP client cancelling a request): the running
    * attempt is aborted, the result is a 'cancelled' error, and nothing is retried.
+   * With an auditor, the call is recorded around all of this (see `audited`).
    */
   async run(call: ToolCall, options: RunOptions = {}): Promise<ToolResult> {
+    if (!this.audit) return this.attempt(call, options);
+    return this.audited(this.audit, call, options);
+  }
+
+  /**
+   * Runs a call with an audit record: `finished` for every call (refused ones too), and for a
+   * write also `started`, inside `attempt`, right before the tool runs.
+   */
+  private async audited(
+    audit: ToolAuditor,
+    call: ToolCall,
+    options: RunOptions,
+  ): Promise<ToolResult> {
+    const startedAt = performance.now();
+    const entry: AuditedCall = {
+      callId: call.id,
+      toolName: call.name,
+      safety: this.registry.get(call.name)?.safety ?? null,
+      argsHash: hashArguments(call.arguments),
+    };
+    const result = await this.attempt(call, options, { audit, entry });
+    const outcome = {
+      status: result.ok ? ('ok' as const) : result.error.code,
+      durationMs: Math.round(performance.now() - startedAt),
+    };
+    try {
+      await audit.finished(entry, outcome);
+    } catch {
+      // The call already happened; the model still gets its result (see ToolAuditor.finished).
+    }
+    return result;
+  }
+
+  /** The checks and the execution, as described on `run`. */
+  private async attempt(
+    call: ToolCall,
+    options: RunOptions,
+    audit?: { audit: ToolAuditor; entry: AuditedCall },
+  ): Promise<ToolResult> {
     const { signal } = options;
     const denied = this.checkAccess(call.name, options.principal);
     if (denied) return denied;
@@ -112,6 +160,17 @@ export class ToolExecutor {
         'invalid_arguments',
         `Invalid arguments for ${tool.name}:\n${z.prettifyError(parsed.error)}`,
       );
+    }
+    // Write-ahead: a write runs only once its audit record is saved.
+    if (audit && tool.safety === 'write') {
+      try {
+        await audit.audit.started(audit.entry);
+      } catch {
+        return fail(
+          'audit_unavailable',
+          'The action could not be recorded in the audit log, so it was not run. Try again later.',
+        );
+      }
     }
 
     for (let attempt = 1; ; attempt++) {

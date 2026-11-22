@@ -10,6 +10,7 @@ import {
 } from '@toolbridge/agent-core';
 import type { Types } from 'mongoose';
 
+import { AuditLog } from '../audit/audit-log.js';
 import { OUTBOUND_HTTP } from '../common/core.module.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { ConnectionsService } from './connections.service.js';
@@ -18,6 +19,8 @@ import { ConnectionsService } from './connections.service.js';
  * Runs one of a tenant's tools against its API (Step 2.3 executor and SSRF-safe client).
  * Defense in depth: the enable/review state is checked here, at call time, not only when tools
  * are listed. Tool failures (404 from the API, validation, timeouts) come back as results.
+ * Every call is audited with the API key as the actor: these calls have no user and no approval
+ * (v3 list: require approval for writes here).
  */
 @Injectable()
 export class CallsService {
@@ -25,11 +28,13 @@ export class CallsService {
     private readonly specs: SpecsService,
     private readonly connections: ConnectionsService,
     @Inject(OUTBOUND_HTTP) private readonly client: SafeHttpClient,
+    private readonly audit: AuditLog,
   ) {}
 
   /** Calls `toolName` with `args` for the tenant, if the tool is allowed right now. */
   async call(
     tenantId: Types.ObjectId,
+    keyId: string,
     specId: string,
     toolName: string,
     args: Record<string, unknown>,
@@ -57,7 +62,12 @@ export class CallsService {
       client: this.client,
       ...(connection.auth !== undefined && { auth: connection.auth }),
     });
-    return new ToolExecutor(new ToolRegistry(tools)).run({
+    const audit = this.audit.auditorFor(tenantId, {
+      runId: null,
+      actor: { kind: 'api_key', keyId },
+      credentialMode: 'service',
+    });
+    return new ToolExecutor(new ToolRegistry(tools), { audit }).run({
       id: randomUUID(),
       name: toolName,
       arguments: JSON.stringify(args),

@@ -18,6 +18,8 @@ import {
 import { OllamaEmbeddingProvider, ToolIndex } from '@toolbridge/retrieval';
 import type { Connection } from 'mongoose';
 
+import { AuditController } from './audit/audit.controller.js';
+import { AuditLog } from './audit/audit-log.js';
 import { Public } from './auth/auth.decorators.js';
 import { PlatformAuthGuard } from './auth/platform-auth.guard.js';
 import { AGENT_LLM, CoreModule, OUTBOUND_HTTP, TOOL_INDEX } from './common/core.module.js';
@@ -100,6 +102,7 @@ export class AppModule {
         ConnectionsController,
         RunsController,
         ApprovalsController,
+        AuditController,
       ],
       providers: [
         // Global: every route needs a key unless it is marked @Public().
@@ -126,6 +129,7 @@ export class AppModule {
               model: config.llm.model,
             }),
         },
+        AuditLog,
         RunToolsService,
         RunsService,
         ApprovalsService,

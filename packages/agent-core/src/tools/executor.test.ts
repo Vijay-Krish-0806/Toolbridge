@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { hashArguments, type ToolAuditor } from './audit.js';
 import { ToolExecutionError } from './errors.js';
 import { type RetryEvent, ToolExecutor, truncateResult } from './executor.js';
 import { ToolRegistry } from './registry.js';
@@ -199,5 +200,59 @@ describe('ToolExecutor with an authorizer', () => {
     });
     expect(result.ok).toBe(true);
     expect(write.calls()).toBe(1);
+  });
+});
+
+/**
+ * Step 4.10 (money safety): with an auditor, a write runs only after its write-ahead record is
+ * saved. If the audit log is down, the refund must not happen at all.
+ */
+describe('ToolExecutor with an auditor', () => {
+  /** An auditor that records what it was told; `failStarted` makes the write-ahead fail. */
+  function recordingAuditor(failStarted = false) {
+    const events: string[] = [];
+    const auditor: ToolAuditor = {
+      started: (c) => {
+        events.push(`started ${c.toolName}`);
+        return failStarted ? Promise.reject(new Error('db down')) : Promise.resolve();
+      },
+      finished: (c, outcome) => {
+        events.push(`finished ${c.toolName} ${outcome.status} ${c.argsHash}`);
+        return Promise.resolve();
+      },
+    };
+    return { auditor, events };
+  }
+  const hash = hashArguments('{"id":"a"}');
+
+  it('records a write before it runs, then its outcome', async () => {
+    const write = flakyTool('refund_thing', 'write', 0, serverError);
+    const { auditor, events } = recordingAuditor();
+    const executor = new ToolExecutor(new ToolRegistry([write.tool]), { audit: auditor });
+    expect(await executor.run(call('refund_thing', '{"id":"a"}'))).toMatchObject({ ok: true });
+    expect(events).toEqual(['started refund_thing', `finished refund_thing ok ${hash}`]);
+    expect(write.calls()).toBe(1);
+  });
+
+  it('does not run a write whose write-ahead record fails (fail closed)', async () => {
+    const write = flakyTool('refund_thing', 'write', 0, serverError);
+    const { auditor, events } = recordingAuditor(true);
+    const executor = new ToolExecutor(new ToolRegistry([write.tool]), { audit: auditor });
+    const result = await executor.run(call('refund_thing', '{"id":"a"}'));
+    expect(result).toMatchObject({ ok: false, error: { code: 'audit_unavailable' } });
+    expect(write.calls()).toBe(0);
+    expect(events.at(-1)).toBe(`finished refund_thing audit_unavailable ${hash}`);
+  });
+
+  it('records reads and refused calls once, after the fact', async () => {
+    const read = flakyTool('get_thing', 'read', 0, serverError);
+    const { auditor, events } = recordingAuditor(true); // a failing write-ahead does not matter
+    const executor = new ToolExecutor(new ToolRegistry([read.tool]), { audit: auditor });
+    await executor.run(call('get_thing', '{"id":"a"}'));
+    await executor.run(call('made_up', '{"id":"a"}'));
+    expect(events).toEqual([
+      `finished get_thing ok ${hash}`,
+      `finished made_up unknown_tool ${hash}`,
+    ]);
   });
 });

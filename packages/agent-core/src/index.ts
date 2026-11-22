@@ -13,6 +13,12 @@ export {
   type RunOptions,
   type RetryEvent,
 } from './tools/executor.js';
+export {
+  hashArguments,
+  type AuditedCall,
+  type AuditOutcome,
+  type ToolAuditor,
+} from './tools/audit.js';
 export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/errors.js';
 export { HostApiClient, type HostApiOptions } from './host-api/client.js';
 export { createHostStoreTools } from './host-api/tools.js';
