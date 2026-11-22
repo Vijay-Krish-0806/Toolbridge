@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Widget demo</title>
+    <style>
+      body {
+        font:
+          15px/1.5 system-ui,
+          sans-serif;
+        max-width: 44rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      toolbridge-chat {
+        --tb-height: 520px;
+        margin-top: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Host store (widget demo)</h1>
+    <p>
+      Pretend you are signed in to the host app as:
+      <select id="user">
+        <option>support</option>
+        <option>owner</option>
+        <option>warehouse</option>
+      </select>
+    </p>
+    <toolbridge-chat
+      id="chat"
+      api-base="%TOOLBRIDGE_API_URL%"
+      heading="Store assistant"
+    ></toolbridge-chat>
+    <script type="module">
+      import '/widget/index.js';
+      const chat = document.getElementById('chat');
+      const user = document.getElementById('user');
+      // The host's OWN server mints the session; the browser never sees the tenant key.
+      chat.getToken = async () => {
+        const res = await fetch(`/api/session?user=${user.value}`, { method: 'POST' });
+        if (!res.ok) throw new Error((await res.json()).message ?? 'no session');
+        return res.json();
+      };
+    </script>
+  </body>
+</html>

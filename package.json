@@ -23,6 +23,9 @@
     "test:e2e": "pnpm --filter @toolbridge/host-store-api test:e2e",
     "start:platform": "turbo run build --filter=@toolbridge/toolbridge-api... && pnpm --filter @toolbridge/toolbridge-api start",
     "start:worker": "turbo run build --filter=@toolbridge/toolbridge-worker... && pnpm --filter @toolbridge/toolbridge-worker start",
+    "demo:setup": "turbo run build --filter=@toolbridge/chat-widget... && pnpm --filter @toolbridge/chat-widget demo:setup",
+    "demo": "pnpm --filter @toolbridge/chat-widget demo",
+    "demo:check": "pnpm --filter @toolbridge/chat-widget demo:check",
     "test:e2e:platform": "turbo run build --filter=@toolbridge/toolbridge-worker... && pnpm --filter @toolbridge/toolbridge-api test:e2e",
     "test:e2e:checkpoint": "turbo run build --filter=@toolbridge/checkpoint-mongo... && pnpm --filter @toolbridge/checkpoint-mongo test:e2e"
   },

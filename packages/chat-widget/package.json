@@ -1,0 +1,23 @@
+{
+  "name": "@toolbridge/chat-widget",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "demo:setup": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/demo/setup.js",
+    "demo": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env --env-file-if-exists=.env.local dist/demo/server.js",
+    "demo:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env --env-file-if-exists=.env.local dist/demo/check.js"
+  },
+  "dependencies": {
+    "@toolbridge/run-events": "workspace:*"
+  }
+}

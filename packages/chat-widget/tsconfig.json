@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The widget runs in browsers (DOM); src/demo/ holds small Node tools for trying it out.
+    "lib": ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src"]
+}
