@@ -77,6 +77,7 @@ export class RunExecutor {
     const tools = await this.runTools.build(tenantId, spec, {
       runId: run._id,
       principal: run.principal,
+      message: run.message,
       ...(card && {
         approval: { ...card, approverId: job.kind === 'resume' ? job.decision.approverId : '' },
       }),

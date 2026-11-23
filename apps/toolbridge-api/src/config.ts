@@ -89,6 +89,11 @@ const envSchema = z.object({
    * owner's 35 tools) and this run's tool results.
    */
   CONVERSATION_HISTORY_TOKENS: z.coerce.number().int().min(1000).default(1500),
+  /** How long a memory lives after it was last saved (Step 4.7). Fractions allowed. */
+  MEMORY_TTL_DAYS: z.coerce.number().positive().max(3650).default(90),
+  /** Memories per user, and the longest one in characters. */
+  MEMORY_MAX_ITEMS: z.coerce.number().int().min(1).max(1000).default(50),
+  MEMORY_MAX_CHARS: z.coerce.number().int().min(20).max(2000).default(300),
   /** Legs one worker process runs at the same time. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
   /**

@@ -7,6 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { MEMORY_SAVE_TOOL } from '@toolbridge/agent-core';
 import { matches, parsePolicy, type Policy } from '@toolbridge/policy';
 import type { Model, Types } from 'mongoose';
 
@@ -75,7 +76,7 @@ export class PoliciesService {
     const compiled = await this.specs.currentCompiled(tenantId, spec);
     const warnings = coverageWarnings(
       policy,
-      compiled.tools.map((t) => t.name),
+      [...compiled.tools.map((t) => t.name), MEMORY_SAVE_TOOL], // ours, so not in the spec
       spec.currentVersion,
     );
 

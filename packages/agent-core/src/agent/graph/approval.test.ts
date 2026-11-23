@@ -136,6 +136,7 @@ describe('approval gate (durable runs)', () => {
         limits: { maxIterations: 8, maxConsecutiveToolErrors: 3 },
         access: deps.access,
         approvals,
+        memoryNamespace: undefined,
       },
     });
     expect(write.runs()).toBe(1);

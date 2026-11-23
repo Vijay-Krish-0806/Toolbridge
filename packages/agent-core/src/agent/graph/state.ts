@@ -65,6 +65,12 @@ export const AgentState = new StateSchema({
   summary: z.string().default(''),
   turns: z.array(z.custom<ConversationTurn>()).default(() => []),
 
+  /**
+   * What the user asked to be remembered (Step 4.7), read once at the start of the run. In the
+   * state, so it is checkpointed: every leg of the run sees the same list.
+   */
+  memories: z.array(z.string()).default(() => []),
+
   /** Set when this run summarized older turns, so the platform can save the new summary. */
   summaryUpdate: z.custom<SummaryUpdate>().optional(),
 
@@ -116,6 +122,11 @@ export const AgentContext = z.object({
   access: z.custom<RunAccess>().optional(),
   /** Which writes wait for a person (Step 4.3). Missing means no approvals. */
   approvals: z.custom<ApprovalPolicy>().optional(),
+  /**
+   * Where this user's memories are in the run's STORE (Step 4.7). The store itself is not context:
+   * LangGraph has its own place for it (`config.store`). Missing means no long-term memory.
+   */
+  memoryNamespace: z.custom<string[]>().optional(),
 });
 
 export type AgentContextValue = z.infer<typeof AgentContext>;

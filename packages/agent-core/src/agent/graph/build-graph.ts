@@ -1,7 +1,7 @@
 /**
  * Wires the nodes into a graph and compiles it.
  *
- *   START -> summarizeHistory (Step 4.7) -> selectTools -> callModel, and from there:
+ *   START -> recallMemories -> summarizeHistory (both Step 4.7) -> selectTools, and from there:
  *
  *   selectTools ----------> callModel --(answered, or budget?)-- yes -----------------> finalize -> END
  *                              ^             | no                                       ^
@@ -34,6 +34,7 @@ import {
   callModel,
   executeTools,
   finalize,
+  recallMemories,
   routeAfterApproval,
   routeAfterModel,
   routeAfterTools,
@@ -49,13 +50,15 @@ import { AgentContext, AgentState } from './state.js';
  */
 export function buildAgentGraph(checkpointer?: BaseCheckpointSaver) {
   return new StateGraph(AgentState, AgentContext)
+    .addNode(NODE.recallMemories, recallMemories)
     .addNode(NODE.summarizeHistory, summarizeHistory)
     .addNode(NODE.selectTools, selectTools)
     .addNode(NODE.callModel, callModel)
     .addNode(NODE.approvalGate, approvalGate)
     .addNode(NODE.executeTools, executeTools)
     .addNode(NODE.finalize, finalize)
-    .addEdge(START, NODE.summarizeHistory)
+    .addEdge(START, NODE.recallMemories)
+    .addEdge(NODE.recallMemories, NODE.summarizeHistory)
     .addEdge(NODE.summarizeHistory, NODE.selectTools)
     .addEdge(NODE.selectTools, NODE.callModel)
     .addConditionalEdges(NODE.callModel, routeAfterModel, [NODE.approvalGate, NODE.finalize])

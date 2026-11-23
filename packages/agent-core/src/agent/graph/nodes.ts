@@ -27,6 +27,7 @@ import type { ChatMessage, ToolCall } from '../../llm/types.js';
 import type { AgentEvent, EmitEvent } from '../run-types.js';
 import { nextCallAllowance } from '../budget.js';
 import { estimatePrompt, fitMessages } from '../context-window.js';
+import { MAX_RECALLED, selectMemories } from '../memories.js';
 import {
   MAX_SUMMARY_TOKENS,
   generateSummary,
@@ -43,6 +44,7 @@ type NodeConfig = LangGraphRunnableConfig<AgentContextValue>;
 
 /** The node names, in one place, so routers and the graph builder cannot drift apart. */
 export const NODE = {
+  recallMemories: 'recallMemories',
   summarizeHistory: 'summarizeHistory',
   selectTools: 'selectTools',
   callModel: 'callModel',
@@ -72,7 +74,23 @@ function emitterOf(config: NodeConfig): EmitEvent {
 }
 
 /**
- * Node 0 (Step 4.7): keeps the conversation history small. Does nothing while it fits into
+ * The first node (Step 4.7): reads the user's long-term memories from LangGraph's STORE, which the
+ * run was started with (`config.store`). The namespace comes from our context, never from the
+ * conversation, so a run can only ever read its own user's memories.
+ * Before -> after: store items for [tenant, spec, user] -> update `{ memories: ['Reply briefly.'] }`.
+ */
+export async function recallMemories(
+  _state: AgentStateValue,
+  config: NodeConfig,
+): Promise<AgentStateUpdate> {
+  const { memoryNamespace } = contextOf(config);
+  if (!memoryNamespace || !config.store) return {};
+  const items = await config.store.search(memoryNamespace, { limit: MAX_RECALLED });
+  return { memories: selectMemories(items) };
+}
+
+/**
+ * The second node (Step 4.7): keeps the conversation history small. Does nothing while it fits into
  * `maxHistoryTokens`. Otherwise the newest turns stay word for word and one extra model call
  * folds the older ones into the summary. It runs once, before the first answer call, and its
  * result is checkpointed: a leg retried later does not pay for it again.

@@ -36,6 +36,12 @@ export interface Tool<Schema extends z.ZodType = z.ZodType> {
   safety: SafetyClass;
   input: Schema;
   /**
+   * Step 4.7: true for a tool that runs inside the platform and never calls the tenant's API. The
+   * executor then leaves out what protects that API (circuit breaker, call rate, the user's
+   * credential, idempotency key). Access checks and the audit log apply as always.
+   */
+  local?: boolean;
+  /**
    * The exact JSON Schema to show the model. Optional: when absent, the registry derives it from
    * `input`. Generated tools set it, because their schema already is JSON Schema and a round trip
    * through Zod could change it.

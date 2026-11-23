@@ -11,17 +11,20 @@ import {
   type SafeHttpClient,
   StaticCredentials,
   hashArguments,
+  MEMORY_SAVE_TOOL,
   type ToolCall,
   ToolExecutor,
   ToolRegistry,
 } from '@toolbridge/agent-core';
-import { createApprovalPolicy, createAuthorizer } from '@toolbridge/policy';
+import type { MongoStore } from '@toolbridge/checkpoint-mongo';
+import { createApprovalPolicy, createAuthorizer, type Policy } from '@toolbridge/policy';
 import type { Types } from 'mongoose';
 
 import { type AuditContext, AuditLog } from '../audit/audit-log.js';
 import { OUTBOUND_HTTP } from '../common/core.module.js';
 import { ConnectionsService } from '../connections/connections.service.js';
 import type { CredentialMode, Spec } from '../domain/models.js';
+import { MemoriesService } from '../memories/memories.service.js';
 import { UserTokenStore } from '../sessions/user-token-store.js';
 import { PoliciesService } from '../policies/policies.service.js';
 import { Breakers, RateLimiter } from './rate-limiter.js';
@@ -44,6 +47,8 @@ export interface RunTools {
   executor: ToolExecutor;
   access: RunAccess;
   approvals: ApprovalPolicy;
+  /** The user's long-term memory (Step 4.7); left out when their role may not use it. */
+  memory?: { store: MongoStore; namespace: string[] };
 }
 
 /**
@@ -70,6 +75,7 @@ export class RunToolsService {
     private readonly userTokens: UserTokenStore,
     private readonly rateLimiter: RateLimiter,
     private readonly breakers: Breakers,
+    private readonly memories: MemoriesService,
   ) {}
 
   /**
@@ -87,6 +93,8 @@ export class RunToolsService {
       principal: Principal;
       approval?: AuditContext['approval'];
       credential?: RunCredential;
+      /** The user's message: needed for the memory tool, so left out when only checking. */
+      message?: string;
     },
   ): Promise<RunTools> {
     const { principal } = run;
@@ -113,6 +121,18 @@ export class RunToolsService {
     );
     const registry = new ToolRegistry(tools);
     const authorizer = createAuthorizer(policy);
+
+    // Step 4.7: long-term memory, for roles whose policy allows `memory_save` (deny by default, as
+    // for every tool; without it nothing is recalled either). If the tenant's API has a tool of
+    // that name, theirs stays and ours is left out, with its approval rule below.
+    const owner = { tenantId, specId: spec._id, userId: principal.userId };
+    const remembers =
+      run.message !== undefined &&
+      registry.get(MEMORY_SAVE_TOOL) === undefined &&
+      authorizer.authorize(principal, MEMORY_SAVE_TOOL).allowed;
+    if (remembers && run.message !== undefined) {
+      registry.register(this.memories.tool(owner, run.message));
+    }
     const approvedCalls = new Set(run.approval?.calls.map((c) => c.id) ?? []);
     const delegated = credential.mode === 'delegated';
     const bearerSchemes = Object.entries(compiled.model.securitySchemes)
@@ -164,9 +184,23 @@ export class RunToolsService {
         }),
       }),
       access: { principal, authorizer },
-      approvals: createApprovalPolicy(policy),
+      approvals: createApprovalPolicy(remembers ? withMemoryRule(policy) : policy),
+      ...(remembers && { memory: this.memories.forRun(owner) }),
     };
   }
+}
+
+/**
+ * The policy plus "memory_save needs no approval": it stores only the user's own words, for that
+ * user. Added as the LAST rule and the first match wins, so a tenant that wants a card for it just
+ * writes a rule; a policy whose default is `required` would otherwise ask for every "remember...".
+ */
+function withMemoryRule(policy: Policy): Policy {
+  const rule = { tools: [MEMORY_SAVE_TOOL], approval: 'none' as const };
+  return {
+    ...policy,
+    approvals: { ...policy.approvals, rules: [...policy.approvals.rules, rule] },
+  };
 }
 
 /**

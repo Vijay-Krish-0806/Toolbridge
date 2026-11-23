@@ -6,7 +6,12 @@
  *   run id, and can stop half-way to wait for a person's approval, then continue later, even in
  *   another process after a restart.
  */
-import { type BaseCheckpointSaver, Command, type START } from '@langchain/langgraph';
+import {
+  type BaseCheckpointSaver,
+  type BaseStore,
+  Command,
+  type START,
+} from '@langchain/langgraph';
 
 import type { ApprovalDecision, ApprovalRequest } from '../approval.js';
 import type { AgentEvent, AgentRunInput, AgentRunResult, EmitEvent } from '../run-types.js';
@@ -35,6 +40,11 @@ export interface DurableRunInput extends AgentRunInput {
    * The run then throws; work saved in earlier checkpoints is kept.
    */
   signal?: AbortSignal;
+  /**
+   * Step 4.7: the user's long-term memory: the store, and the namespace that is theirs. Passed
+   * again on every leg, like every dependency.
+   */
+  memory?: { store: BaseStore; namespace: string[] };
 }
 
 /**
@@ -167,9 +177,11 @@ function startState(input: AgentRunInput): AgentStateUpdate {
  * `recursionLimit` is LangGraph's cap on super-steps (default 25); hitting it throws
  * `GraphRecursionError`. Our `maxIterations` check stops the run first with a clean `stopReason`,
  * so the cap is only a backstop: 3 steps per iteration (callModel, approvalGate, executeTools)
- * plus summarizeHistory, selectTools and finalize, plus some room.
+ * plus recallMemories, summarizeHistory, selectTools and finalize, plus some room.
  */
-function runConfig(input: Omit<AgentRunInput, 'messages'> & { signal?: AbortSignal }) {
+function runConfig(
+  input: Omit<AgentRunInput, 'messages'> & Pick<DurableRunInput, 'signal' | 'memory'>,
+) {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   // Every key is present (some may be undefined): LangGraph's context type requires that.
   const context = {
@@ -180,16 +192,19 @@ function runConfig(input: Omit<AgentRunInput, 'messages'> & { signal?: AbortSign
     limits,
     access: input.access,
     approvals: input.approvals,
+    memoryNamespace: input.memory?.namespace,
   };
   return {
     context,
     streamMode: ['custom', 'values'] as ['custom', 'values'],
-    recursionLimit: limits.maxIterations * 3 + 5,
+    recursionLimit: limits.maxIterations * 3 + 6,
     // DURABILITY "sync": each checkpoint is saved before the next step starts (the default,
     // "async", saves while the next step already runs, so a crash can lose the latest one).
     // Without a checkpointer there is nothing to save, so the option is harmless there.
     durability: 'sync' as const,
     ...(input.signal && { signal: input.signal }),
+    // LangGraph hands this to every node as `config.store`.
+    ...(input.memory && { store: input.memory.store }),
   };
 }
 

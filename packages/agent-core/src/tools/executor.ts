@@ -91,6 +91,20 @@ export interface RunOptions {
   principal?: Principal;
 }
 
+/**
+ * Tells the breaker how an attempt went: network errors, timeouts and retryable HTTP errors
+ * (5xx, 429) mean the API is unwell; any other answer (a 4xx) means it is working.
+ */
+function report(breaker: CircuitBreaker | undefined, error: ToolError): void {
+  if (!breaker) return;
+  const unwell =
+    error.code === 'network' ||
+    error.code === 'timeout' ||
+    (error.code === 'http_error' && error.retryable);
+  if (unwell) breaker.recordFailure();
+  else if (error.code === 'http_error') breaker.recordSuccess();
+}
+
 /** Runs tool calls from the model safely: validate, run with a timeout, retry reads, normalize errors. */
 export class ToolExecutor {
   private readonly timeoutMs: number;
@@ -206,15 +220,17 @@ export class ToolExecutor {
     }
     // Step 4.5: the API's circuit and the tenant's rate, checked before anything is recorded or
     // sent, so a call stopped here leaves no audit row and reaches no API.
-    if (this.breaker?.state() === 'open') return this.circuitOpen();
-    const limited = await this.takeRate();
+    // A local tool (Step 4.7) does not call that API, so none of this is about it.
+    const breaker = tool.local ? undefined : this.breaker;
+    if (breaker?.state() === 'open') return this.circuitOpen();
+    const limited = tool.local ? undefined : await this.takeRate();
     if (limited) return limited;
 
     // The identity this call runs under (Step 4.4c). Picked before the audit row is written, so a
     // call that cannot get its credential leaves no "started" row behind.
     let auth: AuthProvider | undefined;
     try {
-      auth = await this.credentialFor?.(call);
+      auth = tool.local ? undefined : await this.credentialFor?.(call);
     } catch (error) {
       if (error instanceof CredentialUnavailableError) {
         return fail(
@@ -226,7 +242,8 @@ export class ToolExecutor {
     }
 
     // Step 4.5: a write's idempotency key, when the API supports keys.
-    const idempotencyKey = tool.safety === 'write' ? this.idempotencyKeyFor?.(call) : undefined;
+    const idempotencyKey =
+      tool.safety === 'write' && !tool.local ? this.idempotencyKeyFor?.(call) : undefined;
 
     // Write-ahead: a write runs only once its audit record is saved.
     if (audit && tool.safety === 'write') {
@@ -253,7 +270,7 @@ export class ToolExecutor {
     }
 
     for (let attempt = 1; ; attempt++) {
-      if (this.breaker && !this.breaker.allow()) return this.circuitOpen();
+      if (breaker && !breaker.allow()) return this.circuitOpen();
       try {
         const output = await withTimeout(
           (attemptSignal) =>
@@ -265,12 +282,12 @@ export class ToolExecutor {
           this.timeoutMs,
           signal,
         );
-        this.breaker?.recordSuccess();
+        breaker?.recordSuccess();
         const content = JSON.stringify(output ?? null);
         return { ok: true, content: truncateResult(content, this.maxResultChars) };
       } catch (thrown) {
         const error = toToolError(thrown);
-        this.report(error);
+        report(breaker, error);
         // RETRY POLICY BY TOOL CLASS (Step 4.5): reads are retried; a write only when it carries
         // an idempotency key (the API then does it once however often it arrives). A write
         // without a key is never retried: if the first attempt reached the server, a retry
@@ -285,20 +302,6 @@ export class ToolExecutor {
         await this.sleep(delayMs);
       }
     }
-  }
-
-  /**
-   * Tells the breaker how an attempt went: network errors, timeouts and retryable HTTP errors
-   * (5xx, 429) mean the API is unwell; any other answer (a 4xx) means it is working.
-   */
-  private report(error: ToolError): void {
-    if (!this.breaker) return;
-    const unwell =
-      error.code === 'network' ||
-      error.code === 'timeout' ||
-      (error.code === 'http_error' && error.retryable);
-    if (unwell) this.breaker.recordFailure();
-    else if (error.code === 'http_error') this.breaker.recordSuccess();
   }
 
   private circuitOpen(): ToolResult {

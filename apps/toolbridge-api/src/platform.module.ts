@@ -7,12 +7,12 @@ import {
   type OnModuleInit,
 } from '@nestjs/common';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
-import { MongoSaver } from '@toolbridge/checkpoint-mongo';
+import { MongoSaver, MongoStore } from '@toolbridge/checkpoint-mongo';
 import { OllamaEmbeddingProvider, ToolIndex } from '@toolbridge/retrieval';
 import type { Connection } from 'mongoose';
 
 import { AuditLog } from './audit/audit-log.js';
-import { CoreModule, TOOL_INDEX } from './common/core.module.js';
+import { CoreModule, MEMORY_STORE, TOOL_INDEX } from './common/core.module.js';
 import type { PlatformConfig } from './config.js';
 import { ConnectionsService } from './connections/connections.service.js';
 import { MODEL } from './domain/models.js';
@@ -24,18 +24,23 @@ import { RunToolsService } from './runs/run-tools.js';
 import { UserTokenStore } from './sessions/user-token-store.js';
 import { SpecsService } from './specs/specs.service.js';
 import { ConversationsService } from './conversations/conversations.service.js';
+import { MemoriesService } from './memories/memories.service.js';
 import { UsageLedger } from './usage/usage-ledger.js';
 
 /** LangGraph's checkpointer (ADR 0030), shared by the API (reads run state) and the workers. */
 export const CHECKPOINTER = Symbol('CHECKPOINTER');
 
-/** Creates the checkpoint indexes once per process. */
+/** Creates the indexes of LangGraph's checkpointer and store once per process. */
 @Injectable()
-export class CheckpointSetup implements OnModuleInit {
-  constructor(@Inject(CHECKPOINTER) private readonly saver: MongoSaver) {}
+export class LangGraphSetup implements OnModuleInit {
+  constructor(
+    @Inject(CHECKPOINTER) private readonly saver: MongoSaver,
+    @Inject(MEMORY_STORE) private readonly store: MongoStore,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.saver.setup();
+    await this.store.setup();
   }
 }
 
@@ -62,6 +67,7 @@ export class PlatformModule {
       Breakers,
       UsageLedger,
       ConversationsService,
+      MemoriesService,
     ];
     return {
       module: PlatformModule,
@@ -90,7 +96,19 @@ export class PlatformModule {
           },
           inject: [getConnectionToken()],
         },
-        CheckpointSetup,
+        {
+          provide: MEMORY_STORE,
+          useFactory: (connection: Connection) => {
+            if (!connection.db) throw new Error('MongoDB connection has no database yet.');
+            return new MongoStore({
+              db: connection.db,
+              collection: 'memories',
+              ttlMs: config.MEMORY_TTL_DAYS * 86_400_000,
+            });
+          },
+          inject: [getConnectionToken()],
+        },
+        LangGraphSetup,
         ...shared,
       ],
       exports: [MongooseModule, TOOL_INDEX, CHECKPOINTER, ...shared],

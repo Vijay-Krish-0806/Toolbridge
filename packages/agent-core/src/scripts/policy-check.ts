@@ -22,7 +22,7 @@ const SPECS = resolve(import.meta.dirname, '../../../../specs');
 /** The host's roles. "any signed-in staff role" in a description means all of them. */
 const HOST_ROLES = ['owner', 'support', 'warehouse'];
 /** Tools that are ours, not the host API's: not in the spec, so not compared. */
-const PLATFORM_TOOLS = ['knowledge_search'];
+const PLATFORM_TOOLS = ['knowledge_search', 'memory_save'];
 
 /**
  * Reads the roles a description allows.

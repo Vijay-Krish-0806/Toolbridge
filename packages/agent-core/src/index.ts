@@ -59,6 +59,12 @@ export type {
   StopReason,
 } from './agent/run-types.js';
 export type { ConversationHistory, ConversationTurn, SummaryUpdate } from './agent/conversation.js';
+export {
+  createMemorySaveTool,
+  MEMORY_SAVE_TOOL,
+  quotedSentences,
+  type MemorySaveOptions,
+} from './tools/memory-tool.js';
 export { MIN_CALL_OUTPUT_TOKENS } from './agent/budget.js';
 export {
   costMicroUsd,

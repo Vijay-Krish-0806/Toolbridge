@@ -37,6 +37,7 @@ import { SessionsService } from './sessions/sessions.service.js';
 import { SpecsController } from './specs/specs.controller.js';
 import { AdminTenantsController, TenantController } from './tenants/tenants.controller.js';
 import { TenantsService } from './tenants/tenants.service.js';
+import { MemoriesController } from './memories/memories.controller.js';
 import { TenantBudget } from './usage/tenant-budget.js';
 import { UsageController } from './usage/usage.controller.js';
 
@@ -99,6 +100,7 @@ export class AppModule {
         ApprovalsController,
         AuditController,
         UsageController,
+        MemoriesController,
         PoliciesController,
         SessionsController,
         ...(devOnly ? [DevLoginController] : []),

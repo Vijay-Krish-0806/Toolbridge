@@ -11,6 +11,7 @@
  */
 import type { LLMProvider } from '../llm/provider.js';
 import type { ChatMessage, GenerateResult } from '../llm/types.js';
+import { memoryMessages } from './memories.js';
 import { clipText, estimateMessage, estimateTokens } from './context-window.js';
 
 /** One finished exchange. */
@@ -66,13 +67,22 @@ export function historyMessages(history: ConversationHistory): ChatMessage[] {
 }
 
 /**
- * The prompt of a run: its own messages with the history between the system prompt and the rest.
- * Before -> after: ([system, user "new"], history of one turn) ->
+ * The prompt of a run: its own messages, with the user's memories and the conversation history
+ * between the system prompt and the rest.
+ * Before -> after: ([system, user "new"], history of one turn and no memories) ->
  * [system, user "old", assistant "old answer", user "new"].
  */
-export function withHistory(messages: ChatMessage[], history: ConversationHistory): ChatMessage[] {
+export function withHistory(
+  messages: ChatMessage[],
+  history: ConversationHistory & { memories: string[] },
+): ChatMessage[] {
   const start = messages[0]?.role === 'system' ? 1 : 0;
-  return [...messages.slice(0, start), ...historyMessages(history), ...messages.slice(start)];
+  return [
+    ...messages.slice(0, start),
+    ...memoryMessages(history.memories),
+    ...historyMessages(history),
+    ...messages.slice(start),
+  ];
 }
 
 /** The estimated size of a history in the prompt. */
