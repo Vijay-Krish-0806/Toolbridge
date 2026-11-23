@@ -2,6 +2,14 @@
 
 The public event stream of a ToolBridge agent run. The schema lives in `packages/run-events` (zod); this page describes it for client authors, for example the chat widget.
 
+## Starting a run
+
+`POST /runs` with `{ "message": "...", "conversationId": "..." }` answers 202 with `{ runId, conversationId, status }`.
+
+- Leave `conversationId` out to start a new conversation; send the one from an earlier response to continue it (Step 4.7). The run then knows the earlier messages and answers, not the earlier tool results.
+- A conversation belongs to one user, role, spec and credential mode. Anything else is 404: start a new one.
+- One run at a time: 409 while an earlier run of the conversation is running or waiting for approval. `POST /runs/:id/cancel` frees it.
+
 ## Endpoint
 
 ```
@@ -60,6 +68,7 @@ These are not exposed: the model's reasoning, raw model results, tool results, a
 | `answer`          | The model answered. The normal end.                                                                                                                          |
 | `length`          | The answer was cut off by the per-call output limit. `answer` may be incomplete.                                                                             |
 | `token_budget`    | The run reached its token cap (Step 4.6). `answer` is whatever text the last reply had, possibly empty. Tools the model asked for in that reply did not run. |
+| `context_full`    | The request cannot fit the model's context window, even after trimming (Step 4.7). `answer` is empty.                                                        |
 | `max_iterations`  | The run made its maximum number of model calls without answering. `answer` is empty.                                                                         |
 | `too_many_errors` | Too many failed tool calls in a row. `answer` is empty.                                                                                                      |
 

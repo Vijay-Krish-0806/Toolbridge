@@ -26,6 +26,7 @@ import type { ToolExecutor } from '../../tools/executor.js';
 import type { ToolRegistry } from '../../tools/registry.js';
 import type { RunAccess } from '../access.js';
 import type { ApprovalPolicy } from '../approval.js';
+import type { ConversationTurn, SummaryUpdate } from '../conversation.js';
 import {
   type AgentLimits,
   type AgentUsage,
@@ -55,6 +56,17 @@ export const AgentState = new StateSchema({
       reducer: (current, update) => current.concat(update),
     },
   ),
+
+  /**
+   * Earlier turns of the conversation and the summary of the ones before them (Step 4.7), as
+   * given at the start. `summarizeHistory` may replace them. Kept apart from `messages`, which
+   * holds only this run: `callModel` puts them together for each prompt.
+   */
+  summary: z.string().default(''),
+  turns: z.array(z.custom<ConversationTurn>()).default(() => []),
+
+  /** Set when this run summarized older turns, so the platform can save the new summary. */
+  summaryUpdate: z.custom<SummaryUpdate>().optional(),
 
   /** The tool menu, chosen once at the start of the run (last-value channel). */
   tools: z.array(z.custom<ToolDefinition>()).default(() => []),

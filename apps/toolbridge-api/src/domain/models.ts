@@ -148,6 +148,8 @@ export interface Run {
   _id: string;
   tenantId: Types.ObjectId;
   specId: Types.ObjectId;
+  /** The conversation this run is a turn of (Step 4.7); null on runs from before 4.7. */
+  conversationId: string | null;
   message: string;
   principal: Principal;
   credentialMode: CredentialMode;
@@ -264,6 +266,24 @@ export interface Session {
 /** Who a tool call was made for: a host user (agent runs), or a tenant API key (direct calls). */
 export type AuditActor =
   { kind: 'user'; userId: string; role: string } | { kind: 'api_key'; keyId: string };
+
+/**
+ * A conversation (Step 4.7, ADR 0044). Its turns are its run records; this record holds who owns
+ * it (a caller must match every owner field) and the summary of its oldest turns.
+ */
+export interface Conversation {
+  _id: string;
+  tenantId: Types.ObjectId;
+  specId: Types.ObjectId;
+  userId: string;
+  role: string;
+  credentialMode: CredentialMode;
+  summary: string;
+  /** Creation time of the last run the summary covers; null when nothing is summarized yet. */
+  summarizedThrough: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 /**
  * One model call's token use and cost (Step 4.6, ADR 0042). INSERT-ONLY, like the audit log: the
@@ -401,6 +421,7 @@ const runSchema = new Schema<Run>({
   _id: { type: String, required: true },
   tenantId: { type: Schema.Types.ObjectId, required: true },
   specId: { type: Schema.Types.ObjectId, required: true },
+  conversationId: { type: String, default: null },
   message: { type: String, required: true },
   principal: {
     userId: { type: String, required: true },
@@ -425,6 +446,34 @@ const runSchema = new Schema<Run>({
   updatedAt: { type: Date, required: true },
 });
 runSchema.index({ tenantId: 1, createdAt: -1 });
+runSchema.index({ tenantId: 1, conversationId: 1, createdAt: -1 });
+// One active run per conversation (Step 4.7): a second insert fails in the database itself, so two
+// messages sent at once cannot both start. It frees itself when the run's status changes; there is
+// no lock to release, so a crash cannot leave one behind.
+runSchema.index(
+  { tenantId: 1, conversationId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      conversationId: { $type: 'string' },
+      status: { $in: ['running', 'waiting_for_approval'] },
+    },
+  },
+);
+
+const conversationSchema = new Schema<Conversation>({
+  _id: { type: String, required: true },
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  specId: { type: Schema.Types.ObjectId, required: true },
+  userId: { type: String, required: true },
+  role: { type: String, required: true },
+  credentialMode: { type: String, enum: ['service', 'delegated'], required: true },
+  summary: { type: String, default: '' },
+  summarizedThrough: { type: Date, default: null },
+  createdAt: { type: Date, required: true },
+  updatedAt: { type: Date, required: true },
+});
+conversationSchema.index({ tenantId: 1, userId: 1, updatedAt: -1 });
 
 const approvalSchema = new Schema<Approval>({
   tenantId: { type: Schema.Types.ObjectId, required: true },
@@ -539,6 +588,7 @@ export const MODEL = {
   ToolSetting: { name: 'ToolSetting', schema: toolSettingSchema },
   ApiConnection: { name: 'ApiConnection', schema: connectionSchema },
   Run: { name: 'Run', schema: runSchema },
+  Conversation: { name: 'Conversation', schema: conversationSchema },
   Approval: { name: 'Approval', schema: approvalSchema },
   AuditEntry: { name: 'AuditEntry', schema: auditSchema },
   UsageRecord: { name: 'UsageRecord', schema: usageSchema },

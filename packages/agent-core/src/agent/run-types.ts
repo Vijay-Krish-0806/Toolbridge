@@ -9,6 +9,7 @@ import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
 import type { RunAccess } from './access.js';
 import type { ApprovalPolicy } from './approval.js';
+import type { ConversationHistory, SummaryUpdate } from './conversation.js';
 import type { ToolSelection, ToolSelector } from './tool-selector.js';
 
 export interface AgentLimits {
@@ -21,6 +22,13 @@ export interface AgentLimits {
    * Unset means no cap. Only the LangGraph engine enforces it; the raw loop is a frozen baseline.
    */
   maxRunTokens?: number;
+  /**
+   * Step 4.7: the biggest prompt a model call may have (context window minus the output it may
+   * write). Older tool results are left out of the prompt to stay under it. Unset = no limit.
+   */
+  maxPromptTokens?: number;
+  /** Step 4.7: history bigger than this is summarized at the start of a run. Unset = never. */
+  maxHistoryTokens?: number;
 }
 
 export const DEFAULT_LIMITS: AgentLimits = { maxIterations: 8, maxConsecutiveToolErrors: 3 };
@@ -28,9 +36,10 @@ export const DEFAULT_LIMITS: AgentLimits = { maxIterations: 8, maxConsecutiveToo
 /**
  * Why the run ended. `answer` is the normal end. The others mean the run was cut short and
  * `answer` may be empty or partial. `token_budget` (Step 4.6): the run's token cap was reached.
+ * `context_full` (Step 4.7): the prompt cannot fit the context window, even after trimming.
  */
 export type StopReason =
-  'answer' | 'max_iterations' | 'too_many_errors' | 'length' | 'token_budget';
+  'answer' | 'max_iterations' | 'too_many_errors' | 'length' | 'token_budget' | 'context_full';
 
 /** Every stop reason, for schemas that must list them (the graph state). */
 export const STOP_REASONS = [
@@ -39,6 +48,7 @@ export const STOP_REASONS = [
   'too_many_errors',
   'length',
   'token_budget',
+  'context_full',
 ] as const satisfies readonly StopReason[];
 
 export interface AgentUsage {
@@ -72,6 +82,11 @@ export interface AgentRunInput {
   executor: ToolExecutor;
   /** The conversation so far, ending with the new user message. It is not modified. */
   messages: ChatMessage[];
+  /**
+   * Step 4.7: earlier turns of the conversation, kept apart from `messages` so they can be
+   * summarized. Only the LangGraph engine supports it. Without it, `messages` is everything.
+   */
+  history?: ConversationHistory;
   limits?: Partial<AgentLimits>;
   onEvent?: EmitEvent;
   /**
@@ -99,6 +114,8 @@ export interface AgentRunResult {
   answer: string;
   stopReason: StopReason;
   usage: AgentUsage;
+  /** Step 4.7: set when this run summarized older turns; the caller saves it. */
+  summaryUpdate?: SummaryUpdate;
 }
 
 /** Usage at the start of a run: all zeros. */

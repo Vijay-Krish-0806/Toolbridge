@@ -38,6 +38,12 @@ const RENEW_MS = 60_000;
 /** Reconnect delays after a dropped stream: 1 s, 2 s, 4 s, then every 10 s. */
 const BACKOFF_MS = [1000, 2000, 4000, 10_000];
 
+/** A run that was accepted, and the conversation it belongs to. */
+export interface StartedRun {
+  runId: string;
+  conversationId: string;
+}
+
 export class RunClient {
   private cached: SessionToken | undefined;
 
@@ -46,14 +52,29 @@ export class RunClient {
     private readonly getToken: GetToken,
   ) {}
 
-  /** Starts a run for the signed-in user; returns its id. */
-  async startRun(message: string): Promise<string> {
+  /**
+   * Starts a run for the signed-in user and returns its id and its conversation's. With
+   * `conversationId` it continues that conversation; without it a new one starts. A saved
+   * conversation that is gone for this user (404: for example someone else signed in on this
+   * browser, or the role changed) is dropped and a new one started, not shown as an error.
+   */
+  async startRun(message: string, conversationId?: string): Promise<StartedRun> {
+    try {
+      return await this.postRun(message, conversationId);
+    } catch (error) {
+      const gone = error instanceof RunApiError && error.status === 404;
+      if (!gone || conversationId === undefined) throw error;
+      return this.postRun(message);
+    }
+  }
+
+  private async postRun(message: string, conversationId?: string): Promise<StartedRun> {
     const response = await this.request('/runs', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, ...(conversationId !== undefined && { conversationId }) }),
     });
-    return ((await response.json()) as { runId: string }).runId;
+    return (await response.json()) as StartedRun;
   }
 
   /**

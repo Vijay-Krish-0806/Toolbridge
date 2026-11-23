@@ -27,6 +27,7 @@ export async function runAgent(input: AgentRunInput): Promise<AgentRunResult> {
   // The raw loop is a frozen baseline (ADR 0025) and cannot pause. Ignoring approval rules would
   // run writes nobody approved, so refuse instead.
   if (input.approvals) throw new Error('The raw loop does not support approvals; use the graph.');
+  if (input.history) throw new Error('The raw loop does not support history; use the graph.');
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
   const emit = input.onEvent ?? (() => undefined);
   const messages = [...input.messages];

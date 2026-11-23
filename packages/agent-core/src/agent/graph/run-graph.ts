@@ -72,7 +72,7 @@ export async function runAgentGraph(input: AgentRunInput): Promise<AgentRunResul
   }
   plainGraph ??= buildAgentGraph();
   const emit = input.onEvent ?? (() => undefined);
-  const final = await drive(plainGraph, { messages: [...input.messages] }, runConfig(input), emit);
+  const final = await drive(plainGraph, startState(input), runConfig(input), emit);
   return finishedResult(final);
 }
 
@@ -87,7 +87,7 @@ export async function startAgentRun(input: DurableRunInput): Promise<AgentRunOut
   const config = { ...runConfig(input), configurable: { thread_id: input.runId } };
   // The input is a state update like any other: `messages` goes through the append reducer.
   // A copy is passed so the caller's array is never modified.
-  await drive(graph, { messages: [...input.messages] }, config, input.onEvent);
+  await drive(graph, startState(input), config, input.onEvent);
   return outcomeOf(graph, input.runId);
 }
 
@@ -156,13 +156,18 @@ function durableGraph(checkpointer: BaseCheckpointSaver): AgentGraph {
   return graph;
 }
 
+/** The state a run starts with: its messages (copied) and the conversation before them. */
+function startState(input: AgentRunInput): AgentStateUpdate {
+  return { messages: [...input.messages], ...input.history };
+}
+
 /**
  * The per-run config: the context (dependencies, never saved in a checkpoint), the stream modes,
  * and LangGraph's own step cap.
  * `recursionLimit` is LangGraph's cap on super-steps (default 25); hitting it throws
  * `GraphRecursionError`. Our `maxIterations` check stops the run first with a clean `stopReason`,
  * so the cap is only a backstop: 3 steps per iteration (callModel, approvalGate, executeTools)
- * plus selectTools and finalize, plus some room.
+ * plus summarizeHistory, selectTools and finalize, plus some room.
  */
 function runConfig(input: Omit<AgentRunInput, 'messages'> & { signal?: AbortSignal }) {
   const limits = { ...DEFAULT_LIMITS, ...input.limits };
@@ -179,7 +184,7 @@ function runConfig(input: Omit<AgentRunInput, 'messages'> & { signal?: AbortSign
   return {
     context,
     streamMode: ['custom', 'values'] as ['custom', 'values'],
-    recursionLimit: limits.maxIterations * 3 + 4,
+    recursionLimit: limits.maxIterations * 3 + 5,
     // DURABILITY "sync": each checkpoint is saved before the next step starts (the default,
     // "async", saves while the next step already runs, so a crash can lose the latest one).
     // Without a checkpointer there is nothing to save, so the option is harmless there.
@@ -225,5 +230,6 @@ function finishedResult(state: AgentStateValue | undefined): AgentRunResult {
     answer: state.answer,
     stopReason: state.stopReason,
     usage: state.usage,
+    ...(state.summaryUpdate && { summaryUpdate: state.summaryUpdate }),
   };
 }

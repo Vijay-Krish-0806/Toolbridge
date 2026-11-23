@@ -14,6 +14,7 @@ import type { AuditContext } from '../audit/audit-log.js';
 import { mongooseCollection } from '../common/mongoose-collection.js';
 import { TenantScoped } from '../common/tenant-scoped.js';
 import { type Approval, MODEL, type Run, type RunStatus } from '../domain/models.js';
+import { ConversationsService } from '../conversations/conversations.service.js';
 import { EventLog } from '../events/event-log.js';
 import { UserTokenStore } from '../sessions/user-token-store.js';
 import { TenantsService } from '../tenants/tenants.service.js';
@@ -26,6 +27,7 @@ import { TenantBudget } from '../usage/tenant-budget.js';
 export interface RunView {
   id: string;
   specId: string;
+  conversationId: string | null;
   status: RunStatus;
   principal: Principal;
   credentialMode: Run['credentialMode'];
@@ -64,19 +66,29 @@ export class RunsService {
     private readonly tenants: TenantsService,
     private readonly userTokens: UserTokenStore,
     private readonly budget: TenantBudget,
+    private readonly conversations: ConversationsService,
   ) {}
 
   /**
    * Saves a run and queues its first leg; returns at once.
-   * Before -> after: ("refund ORD-7", support user u1) -> `{ runId: '3f2c…', status: 'running' }`.
+   * Before -> after: ("refund ORD-7", support user u1) ->
+   * `{ runId: '3f2c…', conversationId: '91ab…', status: 'running' }`.
    * The tools are built once here only as a CHECK, so an unknown spec (404) or a spec without a
    * connection (409) is refused in the response instead of failing later on a worker.
    * The token cap is fixed here too (Step 4.6); a tenant out of budget gets 429 and no run.
+   * One run at a time per conversation (Step 4.7): 409 while an earlier one is running or waiting
+   * for approval (cancelling it frees the conversation).
    */
   async start(
     tenantId: Types.ObjectId,
-    input: { specId: string; message: string; principal: Principal; sessionId: string },
-  ): Promise<{ runId: string; status: RunStatus }> {
+    input: {
+      specId: string;
+      message: string;
+      principal: Principal;
+      sessionId: string;
+      conversationId?: string;
+    },
+  ): Promise<{ runId: string; conversationId: string; status: RunStatus }> {
     const tokenCap = await this.budget.capForNewRun(tenantId);
     const spec = await this.specs.requireSpec(tenantId, input.specId);
     const runId = randomUUID();
@@ -88,10 +100,16 @@ export class RunsService {
       );
     }
     await this.runTools.build(tenantId, spec, { runId, principal: input.principal });
+    const conversationId = await this.conversations.resolve(
+      tenantId,
+      { specId: spec._id, principal: input.principal, credentialMode },
+      input.conversationId,
+    );
     const now = new Date();
-    await this.runs(tenantId).insertOne({
+    const run = {
       _id: runId,
       specId: spec._id,
+      conversationId,
       message: input.message,
       principal: { userId: input.principal.userId, role: input.principal.role },
       credentialMode,
@@ -107,9 +125,28 @@ export class RunsService {
       eventSeq: 0,
       createdAt: now,
       updatedAt: now,
-    } as Omit<Run, '_id' | 'tenantId'>);
-    await this.queue.start(tenantId.toHexString(), runId);
-    return { runId, status: 'running' };
+    };
+    try {
+      await this.runs(tenantId).insertOne(run as Omit<Run, '_id' | 'tenantId'>);
+    } catch (error) {
+      // The unique index on active runs: this conversation already has one.
+      if (error instanceof Error && 'code' in error && error.code === 11000) {
+        throw new ConflictException('This conversation is still working on an earlier request.');
+      }
+      throw error;
+    }
+    try {
+      await this.queue.start(tenantId.toHexString(), runId);
+    } catch (error) {
+      // Never queued, so no worker will ever end it: end it here, or it would hold the
+      // conversation forever.
+      await this.runs(tenantId).updateOne(
+        { _id: runId, status: 'running' },
+        { status: 'failed', error: 'The run could not be queued.', updatedAt: new Date() },
+      );
+      throw error;
+    }
+    return { runId, conversationId, status: 'running' };
   }
 
   /** One run of `userId` in the tenant, or 404 (also another user's or another tenant's run). */
@@ -235,6 +272,7 @@ export function view(run: Run): RunView {
   return {
     id: run._id,
     specId: run.specId.toHexString(),
+    conversationId: run.conversationId ?? null,
     status: run.status,
     principal: run.principal,
     credentialMode: run.credentialMode,

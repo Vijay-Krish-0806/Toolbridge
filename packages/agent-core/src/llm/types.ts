@@ -57,6 +57,11 @@ export interface GenerateRequest {
    * this and its own configured limit, so a run's token budget can shrink a call, never grow it.
    */
   maxOutputTokens?: number;
+  /**
+   * Step 4.7: `off` asks a thinking model to answer directly. For small internal calls (the
+   * conversation summary), where thinking would use up the whole output. Unset = server default.
+   */
+  reasoning?: 'off';
 }
 
 /** Why the model stopped. Don't use it to detect tool calls: check `message.toolCalls` instead. */

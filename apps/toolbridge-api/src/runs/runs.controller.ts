@@ -61,6 +61,7 @@ export class RunsController {
     return this.runs.start(session.tenantId, {
       specId: session.specId,
       message: dto.message,
+      ...(dto.conversationId !== undefined && { conversationId: dto.conversationId }),
       principal: { userId: session.userId, role: session.role },
       sessionId: session.jti,
     });

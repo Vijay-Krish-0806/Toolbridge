@@ -58,6 +58,7 @@ export type {
   AgentUsage,
   StopReason,
 } from './agent/run-types.js';
+export type { ConversationHistory, ConversationTurn, SummaryUpdate } from './agent/conversation.js';
 export { MIN_CALL_OUTPUT_TOKENS } from './agent/budget.js';
 export {
   costMicroUsd,

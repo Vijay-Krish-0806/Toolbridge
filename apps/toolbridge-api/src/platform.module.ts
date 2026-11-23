@@ -23,6 +23,7 @@ import { RunQueue } from './runs/run-queue.js';
 import { RunToolsService } from './runs/run-tools.js';
 import { UserTokenStore } from './sessions/user-token-store.js';
 import { SpecsService } from './specs/specs.service.js';
+import { ConversationsService } from './conversations/conversations.service.js';
 import { UsageLedger } from './usage/usage-ledger.js';
 
 /** LangGraph's checkpointer (ADR 0030), shared by the API (reads run state) and the workers. */
@@ -60,6 +61,7 @@ export class PlatformModule {
       RateLimiter,
       Breakers,
       UsageLedger,
+      ConversationsService,
     ];
     return {
       module: PlatformModule,

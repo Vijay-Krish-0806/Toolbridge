@@ -1,7 +1,9 @@
 /**
  * Wires the nodes into a graph and compiles it.
  *
- *   START -> selectTools -> callModel --(answered, or budget?)-- yes -----------------> finalize -> END
+ *   START -> summarizeHistory (Step 4.7) -> selectTools -> callModel, and from there:
+ *
+ *   selectTools ----------> callModel --(answered, or budget?)-- yes -----------------> finalize -> END
  *                              ^             | no                                       ^
  *                              |             v                                          |
  *                              |       approvalGate --(rejected)--> callModel           |
@@ -36,6 +38,7 @@ import {
   routeAfterModel,
   routeAfterTools,
   selectTools,
+  summarizeHistory,
 } from './nodes.js';
 import { AgentContext, AgentState } from './state.js';
 
@@ -46,12 +49,14 @@ import { AgentContext, AgentState } from './state.js';
  */
 export function buildAgentGraph(checkpointer?: BaseCheckpointSaver) {
   return new StateGraph(AgentState, AgentContext)
+    .addNode(NODE.summarizeHistory, summarizeHistory)
     .addNode(NODE.selectTools, selectTools)
     .addNode(NODE.callModel, callModel)
     .addNode(NODE.approvalGate, approvalGate)
     .addNode(NODE.executeTools, executeTools)
     .addNode(NODE.finalize, finalize)
-    .addEdge(START, NODE.selectTools)
+    .addEdge(START, NODE.summarizeHistory)
+    .addEdge(NODE.summarizeHistory, NODE.selectTools)
     .addEdge(NODE.selectTools, NODE.callModel)
     .addConditionalEdges(NODE.callModel, routeAfterModel, [NODE.approvalGate, NODE.finalize])
     .addConditionalEdges(NODE.approvalGate, routeAfterApproval, [

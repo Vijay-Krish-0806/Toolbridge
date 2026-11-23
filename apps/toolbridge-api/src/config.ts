@@ -83,6 +83,12 @@ const envSchema = z.object({
    * outputUsdPerMTok } } }`. The model in LLM_MODEL must be listed, or startup fails.
    */
   LLM_PRICE_FILE: z.string().min(1).default(DEFAULT_PRICE_FILE),
+  /**
+   * Conversation history bigger than this many tokens (estimated) is summarized (Step 4.7). Small
+   * on purpose: a 16K window also holds up to 4K of output, the tool menu (up to 6.5K for an
+   * owner's 35 tools) and this run's tool results.
+   */
+  CONVERSATION_HISTORY_TOKENS: z.coerce.number().int().min(1000).default(1500),
   /** Legs one worker process runs at the same time. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(2),
   /**
@@ -162,6 +168,8 @@ export type PlatformConfig = z.infer<typeof envSchema> & {
   embedding: EmbeddingConfig;
   /** The model agent runs use (LLM_* variables, validated by agent-core). */
   llm: LLMConfig;
+  /** Biggest prompt a model call may have: the context window minus the output it may write. */
+  maxPromptTokens: number;
   /** That model's price, from LLM_PRICE_FILE: every usage record is costed with it. */
   llmPrice: ModelPrice;
 };
@@ -177,8 +185,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PlatformConfig
     ...result.data,
     embedding: loadEmbeddingConfig(env),
     llm,
+    maxPromptTokens: promptRoom(llm),
     llmPrice: loadModelPrice(result.data.LLM_PRICE_FILE, llm.model),
   };
+}
+
+/**
+ * The window is shared by the prompt and the output, so the prompt gets what the output leaves.
+ * Throws (so startup fails) when that is too little to work with.
+ * Before -> after: window 16,384, output 4,096 -> 12,288.
+ */
+function promptRoom(llm: LLMConfig): number {
+  const room = llm.contextLength - llm.maxOutputTokens;
+  if (room < 2048) {
+    throw new Error(
+      `Invalid platform configuration: LLM_CONTEXT_LENGTH (${String(llm.contextLength)}) minus ` +
+        `LLM_MAX_OUTPUT_TOKENS (${String(llm.maxOutputTokens)}) leaves under 2048 tokens for prompts.`,
+    );
+  }
+  return room;
 }
 
 /**

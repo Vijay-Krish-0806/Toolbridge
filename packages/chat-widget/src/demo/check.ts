@@ -10,7 +10,7 @@ import { hostLogin, mintSession } from './host-session.js';
 
 const user = await hostLogin('support');
 const client = new RunClient(process.env.TOOLBRIDGE_API_URL ?? '', () => mintSession(user));
-const runId = await client.startRun('What is the status of order ORD-10007?');
+const { runId } = await client.startRun('What is the status of order ORD-10007?');
 console.log(`run ${runId}`);
 
 const seen: RunEvent[] = [];

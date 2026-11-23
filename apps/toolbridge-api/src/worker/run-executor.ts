@@ -24,6 +24,7 @@ import type { RunJob } from '../runs/run-queue.js';
 import { RunToolsService } from '../runs/run-tools.js';
 import { SpecsService } from '../specs/specs.service.js';
 import type { PlatformConfig } from '../config.js';
+import { ConversationsService } from '../conversations/conversations.service.js';
 import { UsageLedger } from '../usage/usage-ledger.js';
 
 /**
@@ -51,6 +52,7 @@ export class RunExecutor {
     private readonly runTools: RunToolsService,
     private readonly events: EventLog,
     private readonly usage: UsageLedger,
+    private readonly conversations: ConversationsService,
     @Inject(PLATFORM_CONFIG) private readonly config: PlatformConfig,
   ) {}
 
@@ -97,7 +99,12 @@ export class RunExecutor {
       signal,
       // The cap was fixed when the run started (RUN_MAX_TOKENS, or less when the tenant's budget
       // was nearly used). It counts the run's checkpointed totals, so it spans every leg.
-      limits: { maxRunTokens: run.tokenCap ?? this.config.RUN_MAX_TOKENS },
+      limits: {
+        maxRunTokens: run.tokenCap ?? this.config.RUN_MAX_TOKENS,
+        // Step 4.7: every prompt stays inside the context window.
+        maxPromptTokens: this.config.maxPromptTokens,
+        maxHistoryTokens: this.config.CONVERSATION_HISTORY_TOKENS,
+      },
       onEvent: (event: AgentEvent) => {
         sink.onEvent(event);
         meter.onEvent(event);
@@ -121,8 +128,10 @@ export class RunExecutor {
     const state = await durableRunState(this.checkpointer, run._id);
     let outcome: AgentRunOutcome;
     if (state.status === 'new') {
+      const history = await this.conversations.historyFor(run.tenantId, run);
       outcome = await startAgentRun({
         ...leg,
+        ...(history && { history }),
         messages: [
           { role: 'system', content: STORE_AGENT_SYSTEM_PROMPT },
           { role: 'user', content: run.message },
@@ -214,7 +223,10 @@ export class RunExecutor {
       }
       return;
     }
-    const { answer, stopReason, usage } = outcome.result;
+    const { answer, stopReason, usage, summaryUpdate } = outcome.result;
+    // Before the run is marked completed: that frees the conversation for its next message, which
+    // must already see the new summary.
+    if (summaryUpdate) await this.conversations.saveSummary(tenantId, run, summaryUpdate);
     const completed = await this.runs(tenantId).updateOne(
       { _id: runId, status: 'running' },
       { status: 'completed', answer, stopReason, usage, updatedAt: now },

@@ -90,6 +90,8 @@ export class OpenAICompatibleProvider implements LLMProvider {
       // Some servers reject an empty tools array, so leave the field out instead.
       ...(tools.length > 0 && { tools: toWireTools(tools) }),
       ...(maxTokens !== undefined && { max_tokens: maxTokens }),
+      // Ollama's documented way to ask for no thinking; sent only when a request wants it.
+      ...(request.reasoning === 'off' && { reasoning_effort: 'none' as const }),
     };
   }
 }

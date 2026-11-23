@@ -10,7 +10,8 @@
  *
  * Safety: everything from the model or the API is shown with `textContent`, never as HTML, so
  * text in an answer or a tool argument cannot inject markup or scripts into the page.
- * A run in progress is remembered in localStorage, so reopening the tab picks it up again.
+ * A run in progress is remembered in localStorage, so reopening the tab picks it up again. So is the
+ * conversation's id (never its text): the next message continues it until "New chat" is pressed.
  */
 import type { RunEvent } from '@toolbridge/run-events';
 
@@ -19,7 +20,7 @@ import { type GetToken, RunApiError, RunClient } from './client.js';
 const STYLE = `
   :host { display: block; font: 14px/1.45 system-ui, sans-serif; color: var(--tb-text, #1d1d1f); }
   .box { display: flex; flex-direction: column; height: var(--tb-height, 480px); border: 1px solid var(--tb-border, #d8d8dc); border-radius: 10px; background: var(--tb-bg, #fff); overflow: hidden; }
-  header { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid var(--tb-border, #d8d8dc); }
+  header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid var(--tb-border, #d8d8dc); }
   .log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
   .msg { padding: 8px 11px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; overflow-wrap: anywhere; }
   .user { align-self: flex-end; background: var(--tb-accent, #2457d6); color: #fff; }
@@ -33,6 +34,7 @@ const STYLE = `
   form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--tb-border, #d8d8dc); }
   input { flex: 1; padding: 8px 10px; font: inherit; border: 1px solid var(--tb-border, #d8d8dc); border-radius: 8px; }
   button { padding: 8px 14px; font: inherit; border: 0; border-radius: 8px; background: var(--tb-accent, #2457d6); color: #fff; cursor: pointer; }
+  .new { padding: 4px 10px; font-size: 12px; background: transparent; color: inherit; border: 1px solid var(--tb-border, #d8d8dc); }
   button:disabled { opacity: .5; cursor: default; }
 `;
 
@@ -41,6 +43,9 @@ interface SavedRun {
   runId: string;
   lastSeq: number;
 }
+
+/** Why a request was dropped, as its abort reason. */
+const NEW_CHAT = 'new-chat';
 
 export class ToolbridgeChat extends HTMLElement {
   static readonly observedAttributes = ['api-base', 'heading'];
@@ -63,7 +68,16 @@ export class ToolbridgeChat extends HTMLElement {
     const style = document.createElement('style');
     style.textContent = STYLE;
     const box = el('div', 'box');
-    this.headingEl = el('header');
+    const header = el('header');
+    this.headingEl = el('span');
+    const newChat = document.createElement('button');
+    newChat.className = 'new';
+    newChat.type = 'button';
+    newChat.textContent = 'New chat';
+    newChat.addEventListener('click', () => {
+      this.newChat();
+    });
+    header.append(this.headingEl, newChat);
     this.log = el('div', 'log');
     const form = document.createElement('form');
     this.input = document.createElement('input');
@@ -72,7 +86,7 @@ export class ToolbridgeChat extends HTMLElement {
     this.button = document.createElement('button');
     this.button.textContent = 'Send';
     form.append(this.input, this.button);
-    box.append(this.headingEl, this.log, form);
+    box.append(header, this.log, form);
     this.root.append(style, box);
     form.addEventListener('submit', (event) => {
       event.preventDefault();
@@ -103,41 +117,74 @@ export class ToolbridgeChat extends HTMLElement {
     const client = this.client();
     if (!client) return;
     this.input.value = '';
-    this.busy(true);
+    const stop = this.begin();
     this.add('msg user', message);
     try {
-      const runId = await client.startRun(message);
+      const { runId, conversationId } = await client.startRun(message, this.conversationId());
+      // Pressed meanwhile. A page that closed is different: its run is remembered, to pick up later.
+      if (stop.reason === NEW_CHAT) return;
+      this.store(this.conversationKey(), conversationId);
       this.saveRun({ runId, lastSeq: 0 });
-      await this.followRun(client, runId, 0);
+      await this.followRun(client, runId, 0, stop);
     } catch (error) {
-      this.fail(error);
+      if (!stop.aborted) this.fail(error);
     }
+  }
+
+  /**
+   * Starts over: the next message begins a new conversation. A run in progress goes on on the
+   * server (also one waiting for approval); this page just stops following it.
+   */
+  private newChat(): void {
+    this.stop?.abort(NEW_CHAT);
+    this.clearRun();
+    this.store(this.conversationKey(), undefined);
+    this.cards.clear();
+    this.answer = undefined;
+    this.log.replaceChildren();
+    this.busy(false);
   }
 
   /** Picks up a run that was in progress when the page was closed. */
   private async resume(saved: SavedRun): Promise<void> {
     const client = this.client();
     if (!client) return;
-    this.busy(true);
+    const stop = this.begin();
     this.add('note', 'Picking up your last request...');
     try {
-      await this.followRun(client, saved.runId, saved.lastSeq);
+      await this.followRun(client, saved.runId, saved.lastSeq, stop);
     } catch (error) {
+      if (stop.aborted) return;
       if (error instanceof RunApiError && error.status === 404) this.clearRun();
       this.fail(error);
     }
   }
 
-  private async followRun(client: RunClient, runId: string, after: number): Promise<void> {
+  /**
+   * Starts one request: locks the input and returns its own stop signal. "New chat" aborts it, so
+   * nothing that still arrives for the old request can touch the new conversation.
+   */
+  private begin(): AbortSignal {
+    this.busy(true);
     this.answer = undefined;
     this.stop = new AbortController();
+    return this.stop.signal;
+  }
+
+  private async followRun(
+    client: RunClient,
+    runId: string,
+    after: number,
+    stop: AbortSignal,
+  ): Promise<void> {
     await client.follow(
       runId,
       (event) => {
+        if (stop.aborted) return;
         this.show(event);
         this.saveRun({ runId, lastSeq: event.seq });
       },
-      { after, signal: this.stop.signal },
+      { after, signal: stop },
     );
     this.clearRun();
     this.busy(false);
@@ -229,6 +276,29 @@ export class ToolbridgeChat extends HTMLElement {
     return `toolbridge-chat:${this.getAttribute('api-base') ?? ''}`;
   }
 
+  private conversationKey(): string {
+    return `${this.storageKey()}:conversation`;
+  }
+
+  /** The conversation to continue, if one is remembered. */
+  private conversationId(): string | undefined {
+    try {
+      return localStorage.getItem(this.conversationKey()) ?? undefined;
+    } catch {
+      return undefined; // storage blocked: every message starts a new conversation
+    }
+  }
+
+  /** Remembers a value, or forgets it when undefined. */
+  private store(key: string, value: string | undefined): void {
+    try {
+      if (value === undefined) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      // storage blocked: it just is not remembered
+    }
+  }
+
   private loadRun(): SavedRun | undefined {
     try {
       const raw = localStorage.getItem(this.storageKey());
@@ -239,19 +309,11 @@ export class ToolbridgeChat extends HTMLElement {
   }
 
   private saveRun(run: SavedRun): void {
-    try {
-      localStorage.setItem(this.storageKey(), JSON.stringify(run));
-    } catch {
-      // storage blocked: the run still works, it just cannot be resumed after a reload
-    }
+    this.store(this.storageKey(), JSON.stringify(run));
   }
 
   private clearRun(): void {
-    try {
-      localStorage.removeItem(this.storageKey());
-    } catch {
-      // nothing to do
-    }
+    this.store(this.storageKey(), undefined);
   }
 }
 

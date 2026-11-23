@@ -26,6 +26,14 @@ import {
 import type { ChatMessage, ToolCall } from '../../llm/types.js';
 import type { AgentEvent, EmitEvent } from '../run-types.js';
 import { nextCallAllowance } from '../budget.js';
+import { estimatePrompt, fitMessages } from '../context-window.js';
+import {
+  MAX_SUMMARY_TOKENS,
+  generateSummary,
+  splitHistory,
+  summaryRequest,
+  withHistory,
+} from '../conversation.js';
 import { addUsage, answerStopReason, emptyUsage, modelCallUsage } from '../run-types.js';
 import { runToolCalls, selectToolMenu, streamModelTurn, toolResultMessages } from '../steps.js';
 import type { AgentContextValue, AgentStateUpdate, AgentStateValue } from './state.js';
@@ -35,6 +43,7 @@ type NodeConfig = LangGraphRunnableConfig<AgentContextValue>;
 
 /** The node names, in one place, so routers and the graph builder cannot drift apart. */
 export const NODE = {
+  summarizeHistory: 'summarizeHistory',
   selectTools: 'selectTools',
   callModel: 'callModel',
   approvalGate: 'approvalGate',
@@ -59,6 +68,67 @@ function contextOf(config: NodeConfig): AgentContextValue {
 function emitterOf(config: NodeConfig): EmitEvent {
   return (event: AgentEvent) => {
     config.writer?.(event);
+  };
+}
+
+/**
+ * Node 0 (Step 4.7): keeps the conversation history small. Does nothing while it fits into
+ * `maxHistoryTokens`. Otherwise the newest turns stay word for word and one extra model call
+ * folds the older ones into the summary. It runs once, before the first answer call, and its
+ * result is checkpointed: a leg retried later does not pay for it again.
+ *
+ * The call counts like any other: in the run's usage (so in its token cap) and, through the
+ * `llm-response` event, in the usage ledger. Iteration 0 marks it as not a step of the agent.
+ * If there is no budget for it, or the model writes nothing, the older turns are just left out of
+ * this run and nothing is saved, so a later run can try again.
+ * Before -> after: `{ summary: 'S1', turns: [t1..t9] }` ->
+ * update `{ summary: 'S2', turns: [t7..t9], summaryUpdate: { summary: 'S2', throughTurnId: 't6' } }`.
+ */
+export async function summarizeHistory(
+  state: AgentStateValue,
+  config: NodeConfig,
+): Promise<AgentStateUpdate> {
+  const { llm, limits } = contextOf(config);
+  if (limits.maxHistoryTokens === undefined) return {};
+  const split = splitHistory(state, limits.maxHistoryTokens);
+  if (!split) return {};
+  const last = split.older.at(-1);
+  if (!last) return { turns: split.recent };
+
+  const messages = summaryRequest(
+    state.summary,
+    split.older,
+    limits.maxPromptTokens ?? limits.maxHistoryTokens * 4,
+  );
+  const allowance = nextCallAllowance(
+    state.usage,
+    limits.maxRunTokens,
+    estimatePrompt(messages, []),
+  );
+  if (allowance === null) return { turns: split.recent };
+
+  const started = performance.now();
+  const result = await generateSummary(
+    llm,
+    messages,
+    Math.min(MAX_SUMMARY_TOKENS, allowance ?? MAX_SUMMARY_TOKENS),
+    config.signal,
+  );
+  emitterOf(config)({
+    type: 'llm-response',
+    iteration: 0,
+    result,
+    durationMs: performance.now() - started,
+  });
+  // `lastInputTokens: 0` keeps it unset: this prompt says nothing about the size of the next one.
+  const usage = { ...modelCallUsage(result.usage), lastInputTokens: 0 };
+  const summary = result.message.content.trim();
+  if (summary === '') return { turns: split.recent, usage };
+  return {
+    summary,
+    turns: split.recent,
+    usage,
+    summaryUpdate: { summary, throughTurnId: last.id },
   };
 }
 
@@ -97,10 +167,22 @@ export async function callModel(
 ): Promise<AgentStateUpdate> {
   const { llm, limits } = contextOf(config);
   const emit = emitterOf(config);
+  // Step 4.7: the prompt is a trimmed COPY (history + this run, old tool results left out when
+  // needed). The state keeps everything.
+  const prompt = fitMessages(
+    withHistory(state.messages, state),
+    state.tools,
+    limits.maxPromptTokens,
+  );
+  if (!prompt) return { stopReason: 'context_full' };
+  // The last prompt's measured size is the best guess for this one, unless this one was trimmed:
+  // then it can be smaller, and the estimate counts too.
   const allowance = nextCallAllowance(
     state.usage,
     limits.maxRunTokens,
-    state.usage.lastInputTokens,
+    prompt.trimmed
+      ? Math.min(state.usage.lastInputTokens, prompt.estimatedTokens)
+      : state.usage.lastInputTokens,
   );
   if (allowance === null) return { stopReason: 'token_budget' };
   const iteration = state.iteration + 1;
@@ -111,7 +193,7 @@ export async function callModel(
   const result = await streamModelTurn(
     llm,
     {
-      messages: state.messages,
+      messages: prompt.messages,
       tools: state.tools,
       ...(config.signal && { signal: config.signal }),
       ...(allowance !== undefined && { maxOutputTokens: allowance }),
@@ -123,11 +205,12 @@ export async function callModel(
   const used = modelCallUsage(result.usage);
   const update: AgentStateUpdate = { messages: [result.message], usage: used, iteration };
   const finished = result.message.toolCalls.length === 0 && result.finishReason !== 'length';
-  // The follow-up prompt holds this call's prompt and its reply, so it is at least their sum.
+  // The follow-up prompt holds this call's prompt and its reply, so it is at least their sum
+  // (but never more than the biggest prompt allowed: trimming sees to that).
   const followUp = nextCallAllowance(
     addUsage(state.usage, used),
     limits.maxRunTokens,
-    used.inputTokens + used.outputTokens,
+    Math.min(used.inputTokens + used.outputTokens, limits.maxPromptTokens ?? Infinity),
   );
   if (!finished && followUp === null) update.stopReason = 'token_budget';
   // A text answer can come at any step: local models cannot be forced to use tools.
