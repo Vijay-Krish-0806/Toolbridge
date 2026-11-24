@@ -21,6 +21,7 @@ import { PoliciesService } from './policies/policies.service.js';
 import { Breakers, RateLimiter } from './runs/rate-limiter.js';
 import { RunQueue } from './runs/run-queue.js';
 import { RunToolsService } from './runs/run-tools.js';
+import { ToolCache } from './runs/tool-cache.js';
 import { UserTokenStore } from './sessions/user-token-store.js';
 import { SpecsService } from './specs/specs.service.js';
 import { ConversationsService } from './conversations/conversations.service.js';
@@ -65,6 +66,7 @@ export class PlatformModule {
       UserTokenStore,
       RateLimiter,
       Breakers,
+      ToolCache,
       UsageLedger,
       ConversationsService,
       MemoriesService,

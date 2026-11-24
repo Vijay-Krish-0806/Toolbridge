@@ -120,6 +120,11 @@ export interface ApiConnection {
    * `Idempotency-Key`), or null when it has none. Only with a key are writes ever retried.
    */
   idempotencyHeader: string | null;
+  /**
+   * Step 4.8: how long results of this API's reads may be reused, in seconds; 0 turns it off.
+   * Unset on connections from before that step.
+   */
+  cacheTtlSeconds?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -330,6 +335,11 @@ export interface AuditEntry {
   /** `ok` or the error code; null on a `started` row. */
   status: string | null;
   durationMs: number | null;
+  /**
+   * Step 4.8: the result came from the cache, so this call sent nothing to the API. Unset on rows
+   * from before that step.
+   */
+  cached?: boolean;
   /** The spec's policy version that authorized the call; null when the spec had no policy. */
   policyVersion: number | null;
   /** The approval that let this call run, or null (reads, refusals, direct calls). */
@@ -412,6 +422,7 @@ const connectionSchema = new Schema<ApiConnection>({
   },
   secret: { type: Schema.Types.Mixed, default: null },
   idempotencyHeader: { type: String, default: null },
+  cacheTtlSeconds: { type: Number, default: 0 },
   createdAt: { type: Date, required: true },
   updatedAt: { type: Date, required: true },
 });
@@ -505,6 +516,7 @@ const auditSchema = new Schema<AuditEntry>({
   argsHash: { type: String, required: true },
   status: { type: String, default: null },
   durationMs: { type: Number, default: null },
+  cached: { type: Boolean, default: false },
   policyVersion: { type: Number, default: null },
   approval: { type: Schema.Types.Mixed, default: null },
 });

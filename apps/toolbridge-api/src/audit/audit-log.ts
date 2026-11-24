@@ -50,8 +50,9 @@ export interface AuditQuery {
 }
 
 /** What callers see about an audit row. */
-export interface AuditView extends Omit<AuditEntry, '_id' | 'tenantId' | 'approval'> {
+export interface AuditView extends Omit<AuditEntry, '_id' | 'tenantId' | 'approval' | 'cached'> {
   id: string;
+  cached: boolean;
   approval: (Omit<NonNullable<AuditEntry['approval']>, 'id'> & { id: string }) | null;
 }
 
@@ -117,6 +118,7 @@ export class AuditLog {
             at: new Date(),
             status: outcome.status,
             durationMs: outcome.durationMs,
+            cached: outcome.cached,
           });
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
@@ -179,6 +181,7 @@ function view(row: AuditEntry): AuditView {
     argsHash: row.argsHash,
     status: row.status,
     durationMs: row.durationMs,
+    cached: row.cached ?? false,
     policyVersion: row.policyVersion,
     approval: row.approval ? { ...row.approval, id: row.approval.id.toHexString() } : null,
   };

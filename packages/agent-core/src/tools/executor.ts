@@ -17,12 +17,16 @@ import {
   ToolTimeoutError,
 } from './errors.js';
 import type { ToolRegistry } from './registry.js';
+import { forgivingCache, type ToolResultCache } from './result-cache.js';
+import type { Tool } from './tool.js';
 
 /**
  * What a tool call produced. It is always a value, never an exception: errors are sent back to
  * the model as results so it can correct itself (for example, fix a bad argument).
+ * `cached` is set when the result came from the cache (Step 4.8).
  */
-export type ToolResult = { ok: true; content: string } | { ok: false; error: ToolError };
+export type ToolResult =
+  { ok: true; content: string; cached?: true } | { ok: false; error: ToolError };
 
 /** Details of a failed attempt that will be retried, for logging. */
 export interface RetryEvent {
@@ -81,6 +85,12 @@ export interface ToolExecutorOptions {
    * A short wait (up to 2 s) is waited out; a longer one refuses the call with `rate_limited`.
    */
   rateLimit?: () => Promise<{ allowed: boolean; retryAfterMs: number }>;
+  /**
+   * Step 4.8: the cache for successful results of read tools. Asked only after the access,
+   * argument and credential checks, so a hit needs the same rights as a real call; every write
+   * invalidates it. A cache that fails is ignored. See tools/result-cache.ts.
+   */
+  cache?: ToolResultCache;
 }
 
 /** Per-call options for `ToolExecutor.run`. */
@@ -121,6 +131,7 @@ export class ToolExecutor {
   private readonly breaker: CircuitBreaker | undefined;
   private readonly rateLimit:
     (() => Promise<{ allowed: boolean; retryAfterMs: number }>) | undefined;
+  private readonly cache: ToolResultCache | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -139,13 +150,15 @@ export class ToolExecutor {
     this.idempotencyKeyFor = options.idempotencyKeyFor;
     this.breaker = options.breaker;
     this.rateLimit = options.rateLimit;
+    this.cache = options.cache && forgivingCache(options.cache);
   }
 
   /**
    * Runs one tool call and always returns a ToolResult. Steps:
    * 1. check access (when an authorizer is set), 2. find the tool by name, 3. parse the arguments
-   * JSON, 4. validate with the tool's Zod schema, 5. execute with a timeout, retrying retryable
-   * failures of read tools with backoff.
+   * JSON, 4. validate with the tool's Zod schema, 5. pick the credential, 6. answer a read from the
+   * cache if it can, 7. execute with a timeout, retrying retryable failures of read tools with
+   * backoff.
    * Access comes first, so a forbidden call learns nothing (not even whether its arguments were
    * valid) and an unknown name is refused the same way as a forbidden one.
    * `signal` lets the caller cancel (for example an MCP client cancelling a request): the running
@@ -177,6 +190,7 @@ export class ToolExecutor {
     const outcome = {
       status: result.ok ? ('ok' as const) : result.error.code,
       durationMs: Math.round(performance.now() - startedAt),
+      cached: result.ok && result.cached === true,
     };
     try {
       await audit.finished(entry, outcome);
@@ -218,16 +232,10 @@ export class ToolExecutor {
         `Invalid arguments for ${tool.name}:\n${z.prettifyError(parsed.error)}`,
       );
     }
-    // Step 4.5: the API's circuit and the tenant's rate, checked before anything is recorded or
-    // sent, so a call stopped here leaves no audit row and reaches no API.
-    // A local tool (Step 4.7) does not call that API, so none of this is about it.
-    const breaker = tool.local ? undefined : this.breaker;
-    if (breaker?.state() === 'open') return this.circuitOpen();
-    const limited = tool.local ? undefined : await this.takeRate();
-    if (limited) return limited;
-
     // The identity this call runs under (Step 4.4c). Picked before the audit row is written, so a
-    // call that cannot get its credential leaves no "started" row behind.
+    // call that cannot get its credential leaves no "started" row behind; and before the cache, so
+    // a user whose session has ended gets no cached data either (Step 4.8). A local tool (Step 4.7)
+    // does not call the tenant's API, so this and the next steps are not about it.
     let auth: AuthProvider | undefined;
     try {
       auth = tool.local ? undefined : await this.credentialFor?.(call);
@@ -240,6 +248,21 @@ export class ToolExecutor {
       }
       throw error;
     }
+
+    // Step 4.8: the cache, for reads. Before the breaker and the rate, because a hit sends nothing.
+    const cache = tool.local ? undefined : this.cache;
+    const found =
+      tool.safety === 'read'
+        ? await cache?.lookup({ callId: call.id, toolName: tool.name, args: parsed.data })
+        : undefined;
+    if (found?.hit) return { ok: true, content: found.content, cached: true };
+
+    // Step 4.5: the API's circuit and the tenant's rate, checked before anything is recorded or
+    // sent, so a call stopped here leaves no "started" row and reaches no API.
+    const breaker = tool.local ? undefined : this.breaker;
+    if (breaker?.state() === 'open') return this.circuitOpen();
+    const limited = tool.local ? undefined : await this.takeRate();
+    if (limited) return limited;
 
     // Step 4.5: a write's idempotency key, when the API supports keys.
     const idempotencyKey =
@@ -269,19 +292,51 @@ export class ToolExecutor {
       }
     }
 
+    const send = () =>
+      this.send(
+        tool,
+        (attemptSignal) =>
+          tool.execute(parsed.data, {
+            signal: attemptSignal,
+            ...(auth && { auth }),
+            ...(idempotencyKey !== undefined && { idempotencyKey }),
+          }),
+        { breaker, keyed: idempotencyKey !== undefined, signal },
+      );
+    if (tool.safety === 'read') {
+      const result = await send();
+      if (result.ok && found) await found.store(result.content);
+      return result;
+    }
+    // Step 4.8: a write makes everything cached for this API old. Before it, in case this process
+    // dies in the middle; and after it, for reads that ran meanwhile. Also when it failed: a write
+    // that timed out may still have been done.
+    await cache?.invalidate();
+    try {
+      return await send();
+    } finally {
+      await cache?.invalidate();
+    }
+  }
+
+  /**
+   * Runs a checked call against its API: attempts with a timeout, the circuit breaker around each
+   * one, and retries with backoff. `keyed`: the write carries an idempotency key.
+   */
+  private async send(
+    tool: Tool,
+    execute: (attemptSignal: AbortSignal) => Promise<unknown>,
+    options: {
+      breaker: CircuitBreaker | undefined;
+      keyed: boolean;
+      signal: AbortSignal | undefined;
+    },
+  ): Promise<ToolResult> {
+    const { breaker, keyed, signal } = options;
     for (let attempt = 1; ; attempt++) {
       if (breaker && !breaker.allow()) return this.circuitOpen();
       try {
-        const output = await withTimeout(
-          (attemptSignal) =>
-            tool.execute(parsed.data, {
-              signal: attemptSignal,
-              ...(auth && { auth }),
-              ...(idempotencyKey !== undefined && { idempotencyKey }),
-            }),
-          this.timeoutMs,
-          signal,
-        );
+        const output = await withTimeout(execute, this.timeoutMs, signal);
         breaker?.recordSuccess();
         const content = JSON.stringify(output ?? null);
         return { ok: true, content: truncateResult(content, this.maxResultChars) };
@@ -292,7 +347,7 @@ export class ToolExecutor {
         // an idempotency key (the API then does it once however often it arrives). A write
         // without a key is never retried: if the first attempt reached the server, a retry
         // could repeat it.
-        const safeToRepeat = tool.safety === 'read' || idempotencyKey !== undefined;
+        const safeToRepeat = tool.safety === 'read' || keyed;
         const canRetry =
           error.retryable && safeToRepeat && attempt <= this.maxRetries && signal?.aborted !== true;
         if (!canRetry) return { ok: false, error };

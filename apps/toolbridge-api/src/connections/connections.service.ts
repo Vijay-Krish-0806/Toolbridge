@@ -34,9 +34,20 @@ export interface ConnectionView {
   tokenField: string | null;
   hasSecret: boolean;
   idempotencyHeader: string | null;
+  cacheTtlSeconds: number;
   /** Which master key version wraps the secret's data key (useful during rotation). */
   keyVersion: string | null;
   updatedAt: Date;
+}
+
+/** What a tool call needs from a connection. */
+export interface ConnectionForCall {
+  baseUrl: string;
+  idempotencyHeader: string | null;
+  cacheTtlSeconds: number;
+  /** Changes whenever the connection is set again, so it tells one configuration from the next. */
+  updatedAt: Date;
+  auth?: AuthProvider;
 }
 
 /** The decrypted form, only ever held in memory during one call. */
@@ -74,12 +85,13 @@ export class ConnectionsService {
       ? encryptSecret(JSON.stringify(payload), connectionAad(tenantId, connectionId), this.keys)
       : null;
     const idempotencyHeader = dto.idempotencyHeader ?? null;
+    const cacheTtlSeconds = dto.cacheTtlSeconds ?? 0;
 
     const now = new Date();
     if (existing) {
       await store.updateOne(
         { _id: connectionId },
-        { baseUrl: dto.baseUrl, auth, secret, idempotencyHeader, updatedAt: now },
+        { baseUrl: dto.baseUrl, auth, secret, idempotencyHeader, cacheTtlSeconds, updatedAt: now },
       );
       return view({
         ...existing,
@@ -87,6 +99,7 @@ export class ConnectionsService {
         auth,
         secret,
         idempotencyHeader,
+        cacheTtlSeconds,
         updatedAt: now,
       });
     }
@@ -97,6 +110,7 @@ export class ConnectionsService {
       auth,
       secret,
       idempotencyHeader,
+      cacheTtlSeconds,
       createdAt: now,
       updatedAt: now,
     } as Omit<ApiConnection, '_id' | 'tenantId'>);
@@ -120,10 +134,7 @@ export class ConnectionsService {
    * exists only inside the returned provider, for this one call (or one agent run). A secret
    * that does not decrypt becomes a fixed 500 message that never hints at which part failed.
    */
-  async forCall(
-    tenantId: Types.ObjectId,
-    specId: Types.ObjectId,
-  ): Promise<{ baseUrl: string; idempotencyHeader: string | null; auth?: AuthProvider }> {
+  async forCall(tenantId: Types.ObjectId, specId: Types.ObjectId): Promise<ConnectionForCall> {
     const connection = await this.scoped(tenantId).findOne({ specId });
     if (!connection) {
       throw new ConflictException(
@@ -131,8 +142,13 @@ export class ConnectionsService {
       );
     }
     const { baseUrl, auth, secret } = connection;
-    const idempotencyHeader = connection.idempotencyHeader ?? null;
-    if (auth.kind === 'none' || secret === null) return { baseUrl, idempotencyHeader };
+    const forCall = {
+      baseUrl,
+      idempotencyHeader: connection.idempotencyHeader ?? null,
+      cacheTtlSeconds: connection.cacheTtlSeconds ?? 0,
+      updatedAt: connection.updatedAt,
+    };
+    if (auth.kind === 'none' || secret === null) return forCall;
     let payload: SecretPayload;
     try {
       payload = JSON.parse(
@@ -149,11 +165,10 @@ export class ConnectionsService {
       throw error;
     }
     if ('secrets' in payload) {
-      return { baseUrl, idempotencyHeader, auth: new StaticCredentials(payload.secrets) };
+      return { ...forCall, auth: new StaticCredentials(payload.secrets) };
     }
     return {
-      baseUrl,
-      idempotencyHeader,
+      ...forCall,
       auth: new TokenLogin({
         client: this.client,
         loginUrl: new URL(auth.loginPath ?? '/', baseUrl),
@@ -264,6 +279,7 @@ function view(connection: ApiConnection): ConnectionView {
     tokenField: connection.auth.tokenField,
     hasSecret: connection.secret !== null,
     idempotencyHeader: connection.idempotencyHeader ?? null,
+    cacheTtlSeconds: connection.cacheTtlSeconds ?? 0,
     keyVersion: connection.secret?.dataKey.keyVersion ?? null,
     updatedAt: connection.updatedAt,
   };

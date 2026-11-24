@@ -1,4 +1,15 @@
-import { IsIn, IsObject, IsOptional, IsString, IsUrl, Length, Matches } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  IsUrl,
+  Length,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
 
 import type { AuthKind } from '../domain/models.js';
 
@@ -43,6 +54,17 @@ export class SetConnectionDto {
   @IsOptional()
   @Matches(/^[A-Za-z][A-Za-z0-9-]{0,63}$/, { message: 'idempotencyHeader must be a header name' })
   idempotencyHeader?: string;
+
+  /**
+   * Step 4.8: how long the result of a read may be reused, in seconds (at most 5 minutes). Writes
+   * through the platform end it at once; changes made elsewhere (your own UI) are noticed only
+   * when the time is over. Omit, or 0, for no caching.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(300)
+  cacheTtlSeconds?: number;
 }
 
 export class CallToolDto {

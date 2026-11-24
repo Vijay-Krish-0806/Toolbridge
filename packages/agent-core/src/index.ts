@@ -26,6 +26,7 @@ export {
   type CircuitBreakerOptions,
   type CircuitState,
 } from './tools/circuit-breaker.js';
+export type { CacheableCall, CacheLookup, ToolResultCache } from './tools/result-cache.js';
 export { ToolExecutionError, type ToolError, type ToolErrorCode } from './tools/errors.js';
 export { HostApiClient, type HostApiOptions } from './host-api/client.js';
 export { createHostStoreTools } from './host-api/tools.js';

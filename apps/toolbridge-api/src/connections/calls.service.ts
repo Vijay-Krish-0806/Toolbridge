@@ -12,6 +12,7 @@ import type { Types } from 'mongoose';
 
 import { AuditLog } from '../audit/audit-log.js';
 import { OUTBOUND_HTTP } from '../common/core.module.js';
+import { ToolCache } from '../runs/tool-cache.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { ConnectionsService } from './connections.service.js';
 
@@ -29,6 +30,7 @@ export class CallsService {
     private readonly connections: ConnectionsService,
     @Inject(OUTBOUND_HTTP) private readonly client: SafeHttpClient,
     private readonly audit: AuditLog,
+    private readonly cache: ToolCache,
   ) {}
 
   /** Calls `toolName` with `args` for the tenant, if the tool is allowed right now. */
@@ -76,6 +78,8 @@ export class CallsService {
     const keyed = connection.idempotencyHeader !== null;
     return new ToolExecutor(new ToolRegistry(tools), {
       audit,
+      // Step 4.8: no identity, so reads are never cached; a write still invalidates the runs' cache.
+      cache: this.cache.for({ tenantId, spec, connection }),
       ...(keyed && { idempotencyKeyFor: () => `tb-direct-${callId}` }),
     }).run({
       id: callId,

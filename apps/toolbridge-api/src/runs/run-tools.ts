@@ -29,6 +29,7 @@ import { UserTokenStore } from '../sessions/user-token-store.js';
 import { PoliciesService } from '../policies/policies.service.js';
 import { Breakers, RateLimiter } from './rate-limiter.js';
 import { SpecsService } from '../specs/specs.service.js';
+import { ToolCache } from './tool-cache.js';
 
 /**
  * Whose credential a run uses (Step 4.4c). In delegated mode, the requester's session holds the
@@ -76,6 +77,7 @@ export class RunToolsService {
     private readonly rateLimiter: RateLimiter,
     private readonly breakers: Breakers,
     private readonly memories: MemoriesService,
+    private readonly cache: ToolCache,
   ) {}
 
   /**
@@ -156,6 +158,9 @@ export class RunToolsService {
       // The user's token stands in for the service credential on every bearer scheme of the API.
       return new StaticCredentials(Object.fromEntries(bearerSchemes.map((n) => [n, found.token])));
     };
+    /** Delegated mode: the user whose token makes this call (the same choice as above). */
+    const credentialUser = (callId: string): string | null =>
+      approvedCalls.has(callId) ? (run.approval?.approverId ?? null) : principal.userId;
     return {
       registry,
       executor: new ToolExecutor(registry, {
@@ -171,14 +176,19 @@ export class RunToolsService {
             idempotencyKey(tenantId, run.runId, call.id, hashArguments(call.arguments)),
         }),
         ...(delegated && { credentialFor }),
+        // Step 4.8: results are shared only between callers the API would answer the same: one
+        // role in service mode, one user in delegated mode. An approved call runs as the APPROVER,
+        // so its results are the approver's, not the requester's.
+        cache: this.cache.for({ tenantId, spec, connection }, (callId) => ({
+          mode: credential.mode,
+          role: principal.role,
+          userId: delegated ? credentialUser(callId) : null,
+        })),
         audit: this.audit.auditorFor(tenantId, {
           runId: run.runId,
           actor: { kind: 'user', userId: principal.userId, role: principal.role },
           credentialMode: credential.mode,
-          ...(delegated && {
-            credentialUserFor: (callId: string) =>
-              approvedCalls.has(callId) ? (run.approval?.approverId ?? null) : principal.userId,
-          }),
+          ...(delegated && { credentialUserFor: credentialUser }),
           policyVersion,
           ...(run.approval && { approval: run.approval }),
         }),

@@ -43,6 +43,8 @@ export interface AuditedCall {
 export interface AuditOutcome {
   status: 'ok' | ToolErrorCode;
   durationMs: number;
+  /** Step 4.8: the result came from the cache, so nothing was sent to the API. */
+  cached: boolean;
 }
 
 export interface ToolAuditor {
