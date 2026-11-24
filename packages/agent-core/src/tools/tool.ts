@@ -42,6 +42,12 @@ export interface Tool<Schema extends z.ZodType = z.ZodType> {
    */
   local?: boolean;
   /**
+   * Step 4.7: true for a tool whose work is done once it has succeeded. The graph then takes it
+   * off the menu for the rest of the run. Found live: a small model repeated a successful
+   * `memory_save` until the run hit its limit, and prompt wording did not stop it reliably.
+   */
+  once?: boolean;
+  /**
    * The exact JSON Schema to show the model. Optional: when absent, the registry derives it from
    * `input`. Generated tools set it, because their schema already is JSON Schema and a round trip
    * through Zod could change it.

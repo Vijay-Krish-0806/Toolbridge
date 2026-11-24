@@ -28,10 +28,11 @@ export function createMemorySaveTool(options: MemorySaveOptions): Tool {
   const tool = defineTool({
     name: MEMORY_SAVE_TOOL,
     description:
-      'Remember something for this user in later conversations. Use it only when the user asks you to remember something. ' +
-      "`quote` must be copied word for word from the user's current message.",
+      'Remember something for this user in later conversations. Use it only when the user asks you to remember their own words. ' +
+      "`quote` must be copied word for word from the user's current message; facts from other tools cannot be saved.",
     safety: 'write',
     local: true,
+    once: true,
     input: z.object({
       quote: z
         .string()

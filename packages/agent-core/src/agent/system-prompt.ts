@@ -19,12 +19,23 @@ export const KNOWLEDGE_PROMPT_RULES = `- For questions about store rules (refund
 - If no passage answers the question, say the store policies do not cover it.`;
 
 /**
+ * Extra rules when the memory_save tool is offered (Step 4.7). Found in a live run: without them
+ * the model said something was "saved to memory" although it had never called the tool.
+ */
+export const MEMORY_PROMPT_RULES = `- memory_save can only remember the user's own words from their current message. Facts from tools, such as an order's status, cannot be saved: say so and offer to look them up again.
+- Call memory_save at most once per message. As soon as it returns "saved": true, stop calling tools for it and tell the user in one sentence. Say that something was saved only after that result.
+- Notes the user asked you to remember earlier are already saved. Follow them, but do not save them again.`;
+
+/**
  * The system prompt for one session.
  * Before -> after: `{ knowledge: false }` -> STORE_AGENT_SYSTEM_PROMPT;
- * `{ knowledge: true }` -> the same plus KNOWLEDGE_PROMPT_RULES.
+ * `{ knowledge: true }` -> the same plus KNOWLEDGE_PROMPT_RULES; `memory: true` adds
+ * MEMORY_PROMPT_RULES.
  */
-export function storeAgentSystemPrompt(options: { knowledge: boolean }): string {
-  return options.knowledge
-    ? `${STORE_AGENT_SYSTEM_PROMPT}\n${KNOWLEDGE_PROMPT_RULES}`
-    : STORE_AGENT_SYSTEM_PROMPT;
+export function storeAgentSystemPrompt(options: { knowledge: boolean; memory?: boolean }): string {
+  return [
+    STORE_AGENT_SYSTEM_PROMPT,
+    ...(options.knowledge ? [KNOWLEDGE_PROMPT_RULES] : []),
+    ...(options.memory ? [MEMORY_PROMPT_RULES] : []),
+  ].join('\n');
 }

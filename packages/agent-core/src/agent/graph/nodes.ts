@@ -306,7 +306,7 @@ export function approvalGate(state: AgentStateValue, config: NodeConfig): AgentS
 
 /**
  * Node 4: runs the tool calls from the latest model reply and appends one `tool` message per
- * call. Then it checks the two limits; hitting one sets `stopReason`:
+ * call. A `once` tool that succeeded leaves the menu (Step 4.7). Then it checks the two limits; hitting one sets `stopReason`:
  * - too many failed results in a row -> `too_many_errors` (checked first, like the raw loop),
  * - the model-call budget is used up -> `max_iterations`.
  * Before -> after: last message asks for [orders_get] -> update
@@ -336,6 +336,15 @@ export async function executeTools(
     usage: { ...emptyUsage(), toolCalls: calls.length },
     consecutiveErrors: turn.consecutiveErrors,
   };
+  // Step 4.7: a `once` tool that succeeded leaves the menu, so later replies cannot call it again
+  // (a call that tries anyway is refused as not offered). The menu is in the state, so this also
+  // holds after a pause or on another worker. Calls in the SAME reply all ran: they can differ.
+  const done = new Set(
+    calls
+      .filter((call, i) => results[i]?.ok === true && registry.get(call.name)?.once === true)
+      .map((call) => call.name),
+  );
+  if (done.size > 0) update.tools = state.tools.filter((tool) => !done.has(tool.name));
   if (turn.consecutiveErrors >= limits.maxConsecutiveToolErrors) {
     update.stopReason = 'too_many_errors';
   } else if (state.iteration >= limits.maxIterations) {

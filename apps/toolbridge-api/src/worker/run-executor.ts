@@ -8,7 +8,7 @@ import {
   type LLMProvider,
   resumeAgentRun,
   startAgentRun,
-  STORE_AGENT_SYSTEM_PROMPT,
+  storeAgentSystemPrompt,
 } from '@toolbridge/agent-core';
 import type { MongoSaver } from '@toolbridge/checkpoint-mongo';
 import { type Model, Types } from 'mongoose';
@@ -134,7 +134,13 @@ export class RunExecutor {
         ...leg,
         ...(history && { history }),
         messages: [
-          { role: 'system', content: STORE_AGENT_SYSTEM_PROMPT },
+          {
+            role: 'system',
+            content: storeAgentSystemPrompt({
+              knowledge: false,
+              memory: leg.memory !== undefined,
+            }),
+          },
           { role: 'user', content: run.message },
         ],
       });

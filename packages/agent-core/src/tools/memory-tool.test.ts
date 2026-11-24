@@ -93,12 +93,82 @@ describe('the quote rule', () => {
   });
 });
 
-describe('recall', () => {
-  const answer: GenerateResult = {
-    message: { role: 'assistant', content: 'ok', toolCalls: [] },
-    finishReason: 'stop',
-  };
+const answer: GenerateResult = {
+  message: { role: 'assistant', content: 'ok', toolCalls: [] },
+  finishReason: 'stop',
+};
 
+describe('saving once per run', () => {
+  /** Runs the graph with a scripted model, a memory tool and one other tool. */
+  async function run(quotesPerReply: string[][]) {
+    const saved: string[] = [];
+    const registry = new ToolRegistry([
+      createMemorySaveTool({
+        userMessage: 'Remember I like tea. And my name is Sam.',
+        maxChars: 100,
+        save: (text) => {
+          saved.push(text);
+          return Promise.resolve(true);
+        },
+      }),
+      defineTool({
+        name: 'orders_get',
+        description: 'x',
+        safety: 'read',
+        input: z.looseObject({}),
+        execute: () => Promise.resolve({}),
+      }),
+    ]);
+    let id = 0;
+    const llm = new FakeProvider([
+      ...quotesPerReply.map((quotes): GenerateResult => ({
+        message: {
+          role: 'assistant',
+          content: '',
+          toolCalls: quotes.map((quote) => ({ ...call(quote), id: `c${String(++id)}` })),
+        },
+        finishReason: 'tool_calls',
+      })),
+      answer,
+    ]);
+    const outcome = await startAgentRun({
+      llm,
+      registry,
+      executor: new ToolExecutor(registry),
+      messages: [{ role: 'user', content: 'Remember I like tea. And my name is Sam.' }],
+      runId: 'once',
+      checkpointer: new MemorySaver(),
+    });
+    const menus = llm.requests.map((r) => (r.tools ?? []).map((t) => t.name));
+    return { saved, menus, outcome };
+  }
+
+  it('takes the tool off the menu after a success, and refuses a call that tries anyway', async () => {
+    const { saved, menus, outcome } = await run([['I like tea'], ['I like tea'], ['I like tea']]);
+    expect(saved).toEqual(['Remember I like tea.']);
+    expect(menus).toEqual([
+      ['memory_save', 'orders_get'],
+      ['orders_get'],
+      ['orders_get'],
+      ['orders_get'],
+    ]);
+    expect(outcome).toMatchObject({ result: { stopReason: 'answer', answer: 'ok' } });
+  });
+
+  it('two different things in one reply are both saved', async () => {
+    const { saved } = await run([['I like tea', 'my name is Sam']]);
+    expect(saved).toEqual(['Remember I like tea.', 'And my name is Sam.']);
+  });
+
+  it('a refused quote keeps the tool on the menu, so the model can correct it', async () => {
+    const { saved, menus } = await run([['not their words'], ['I like tea']]);
+    expect(saved).toEqual(['Remember I like tea.']);
+    expect(menus[1]).toContain('memory_save');
+    expect(menus[2]).not.toContain('memory_save');
+  });
+});
+
+describe('recall', () => {
   it('reads only its own namespace, and shows memories as user data after the system prompt', async () => {
     const store = new InMemoryStore();
     await store.put(['t', 's', 'ann'], 'a', { text: 'Reply in French.' });

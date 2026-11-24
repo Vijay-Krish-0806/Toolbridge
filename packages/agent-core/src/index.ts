@@ -73,7 +73,7 @@ export {
   type ModelPrice,
   type PriceTable,
 } from './llm/pricing.js';
-export { STORE_AGENT_SYSTEM_PROMPT } from './agent/system-prompt.js';
+export { STORE_AGENT_SYSTEM_PROMPT, storeAgentSystemPrompt } from './agent/system-prompt.js';
 export type { SelectOptions, ToolSelection, ToolSelector } from './agent/tool-selector.js';
 export type { AccessDecision, Principal, RunAccess, ToolAuthorizer } from './agent/access.js';
 export { createOpenApiTools, type OpenApiToolsOptions } from './openapi/generated-tools.js';
