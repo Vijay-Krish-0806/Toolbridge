@@ -38,9 +38,16 @@ export const DEFAULT_LIMITS: AgentLimits = { maxIterations: 8, maxConsecutiveToo
  * Why the run ended. `answer` is the normal end. The others mean the run was cut short and
  * `answer` may be empty or partial. `token_budget` (Step 4.6): the run's token cap was reached.
  * `context_full` (Step 4.7): the prompt cannot fit the context window, even after trimming.
+ * `empty_answer` (ADR 0052): the model ended without any text, also when asked once more.
  */
 export type StopReason =
-  'answer' | 'max_iterations' | 'too_many_errors' | 'length' | 'token_budget' | 'context_full';
+  | 'answer'
+  | 'max_iterations'
+  | 'too_many_errors'
+  | 'length'
+  | 'token_budget'
+  | 'context_full'
+  | 'empty_answer';
 
 /** Every stop reason, for schemas that must list them (the graph state). */
 export const STOP_REASONS = [
@@ -50,6 +57,7 @@ export const STOP_REASONS = [
   'length',
   'token_budget',
   'context_full',
+  'empty_answer',
 ] as const satisfies readonly StopReason[];
 
 export interface AgentUsage {

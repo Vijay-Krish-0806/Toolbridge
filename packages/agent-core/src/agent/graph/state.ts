@@ -96,6 +96,12 @@ export const AgentState = new StateSchema({
   consecutiveErrors: z.number().default(0),
 
   /**
+   * The one extra chance after an empty reply (ADR 0052): `due` = the next model call is it. In the
+   * state, so it is checkpointed: a crash or another worker cannot add a second one.
+   */
+  emptyRetry: z.enum(['unused', 'due', 'used']).default('unused'),
+
+  /**
    * Set by the node that detects the run should end. The routing functions send the run to
    * `finalize` as soon as this is set. Empty while the run is still going.
    */

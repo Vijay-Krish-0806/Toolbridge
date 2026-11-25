@@ -27,6 +27,8 @@ Prepared for Vijay. This is the step-by-step build spec to hand to Claude Code. 
 
 **v1 (a working demo, build this first):** Steps 0.1 to 0.3, 1.1 to 1.3, 2.1 to 2.3, 2.5, 2.6a, 4.2, 4.3, 4.3b, 4.4a to 4.4c, 4.5, 4.9, 4.10, 5.1 and 5.2, and 7.0, plus UI screens U1a, U1b and U3. Everything else is v2.
 
+**Owner's decisions (2026-11-25):** U1a is skipped (the chat widget covers it), U3 is a page of `apps/host-store-web` (ADR 0051), and Step 5.3 is set aside to keep this local project easy to understand.
+
 **If you fall behind, cut in this order:** 6.3, 7.4, U4, 4.7, 4.8, 3.4, 4.6. Never cut 4.2 (RBAC), 4.3 (approvals), 4.5 (idempotency), 4.9 (injection defense), or Phase 5 (evals).
 
 **Cost guard:** local-only, no API keys and no paid services. Every model runs on your laptop through Ollama, reached through an OpenAI-compatible adapter. Read the provider, base URL, and model name from environment variables. Tests use the fake provider, so they need no model at all. Never commit keys. If you ever add a hosted provider later, it plugs in behind the same `LLMProvider` port, and you set a spend cap first.

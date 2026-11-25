@@ -236,6 +236,12 @@ export class ToolbridgeChat extends HTMLElement {
           this.add('note error', event.data.error ?? `The request ${event.data.status}.`);
         } else if (!this.answer && event.data.answer) {
           this.add('msg assistant', event.data.answer);
+        } else if (!event.data.answer?.trim()) {
+          this.add(
+            'note error',
+            'The assistant did not write an answer. An approved change may already be done: please ' +
+              'check, or ask again.',
+          );
         }
         break;
     }

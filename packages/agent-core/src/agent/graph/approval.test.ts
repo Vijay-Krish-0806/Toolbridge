@@ -144,6 +144,37 @@ describe('approval gate (durable runs)', () => {
     expect(write.runs()).toBe(1);
   });
 
+  it('an empty reply after an approved write is asked again without running the write again', async () => {
+    const empty: GenerateResult = {
+      message: { role: 'assistant', content: ' ', toolCalls: [] },
+      finishReason: 'stop',
+    };
+    const { deps, start, write, llm } = setup([turn(refund), empty, answer]);
+    await start();
+    const done = await resumeAgentRun({
+      ...deps,
+      decision: { decision: 'approved', approverId: 'u2' },
+    });
+    expect(done).toMatchObject({
+      status: 'finished',
+      result: { answer: 'done', stopReason: 'answer' },
+    });
+    expect(write.runs()).toBe(1);
+    expect(llm.requests).toHaveLength(3);
+
+    // A retry that asks for the write again pauses like any other: nothing runs unapproved.
+    const again = setup([empty, turn(refund), empty]);
+    expect((await again.start()).status).toBe('waiting_for_approval');
+    expect(again.write.runs()).toBe(0);
+    const end = await resumeAgentRun({
+      ...again.deps,
+      decision: { decision: 'approved', approverId: 'u2' },
+    });
+    // The one retry was used before the pause, and that was checkpointed: no second one.
+    expect(end).toMatchObject({ result: { answer: '', stopReason: 'empty_answer' } });
+    expect(again.write.runs()).toBe(1);
+  });
+
   it('rejecting runs nothing and tells the model why', async () => {
     const { deps, start, read, write, llm } = setup();
     await start();

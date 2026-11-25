@@ -61,7 +61,11 @@ export function buildAgentGraph(checkpointer?: BaseCheckpointSaver) {
     .addEdge(NODE.recallMemories, NODE.summarizeHistory)
     .addEdge(NODE.summarizeHistory, NODE.selectTools)
     .addEdge(NODE.selectTools, NODE.callModel)
-    .addConditionalEdges(NODE.callModel, routeAfterModel, [NODE.approvalGate, NODE.finalize])
+    .addConditionalEdges(NODE.callModel, routeAfterModel, [
+      NODE.approvalGate,
+      NODE.callModel,
+      NODE.finalize,
+    ])
     .addConditionalEdges(NODE.approvalGate, routeAfterApproval, [
       NODE.executeTools,
       NODE.callModel,

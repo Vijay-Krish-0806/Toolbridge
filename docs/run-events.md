@@ -70,6 +70,7 @@ These are not exposed: the model's reasoning, raw model results, tool results, a
 | `token_budget`    | The run reached its token cap (Step 4.6). `answer` is whatever text the last reply had, possibly empty. Tools the model asked for in that reply did not run. |
 | `context_full`    | The request cannot fit the model's context window, even after trimming (Step 4.7). `answer` is empty.                                                        |
 | `max_iterations`  | The run made its maximum number of model calls without answering. `answer` is empty.                                                                         |
+| `empty_answer`    | The model ended without any text, also when asked once more (ADR 0052). `answer` is empty; writes that ran before stay done.                                 |
 | `too_many_errors` | Too many failed tool calls in a row. `answer` is empty.                                                                                                      |
 
 New stop reasons can be added without a new version; show an unknown one as "stopped".

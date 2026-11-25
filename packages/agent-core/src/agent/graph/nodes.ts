@@ -43,6 +43,14 @@ import type { AgentContextValue, AgentStateUpdate, AgentStateValue } from './sta
 /** The config every node receives, typed with our context. */
 type NodeConfig = LangGraphRunnableConfig<AgentContextValue>;
 
+/**
+ * What the model is told when its last reply had no text (ADR 0052). It is added to that one prompt
+ * only, never to the state: it is not the user's words, so it must not become history.
+ */
+const EMPTY_REPLY_REMINDER =
+  'Automatic reminder, not from the user: your last reply had no text. Answer the request above ' +
+  'now, using the results you already have. If something could not be done, say so.';
+
 /** The node names, in one place, so routers and the graph builder cannot drift apart. */
 export const NODE = {
   recallMemories: 'recallMemories',
@@ -177,8 +185,13 @@ export async function selectTools(
  *   the follow-up call could not fit, the run stops with `token_budget` now. Its tools are NOT
  *   run: their results would go to a model call that never happens, and a write nobody reports
  *   back is worse than no write.
+ *
+ * ADR 0052, the empty reply: a small model sometimes ends its turn with thinking only, so the user
+ * would see nothing. Once per run the model is asked again, with a reminder and thinking off; the
+ * empty reply itself is dropped. Empty again, or no room for another call: `empty_answer`.
  * Before -> after: `{ iteration: 1, messages: [..3] }` ->
- * update `{ messages: [assistant reply], usage: { llmCalls: 1, ... }, iteration: 2 }`.
+ * update `{ messages: [assistant reply], usage: { llmCalls: 1, ... }, iteration: 2 }`;
+ * an empty reply -> update `{ usage, iteration: 2, emptyRetry: 'due' }`.
  */
 export async function callModel(
   state: AgentStateValue,
@@ -188,11 +201,11 @@ export async function callModel(
   const emit = emitterOf(config);
   // Step 4.7: the prompt is a trimmed COPY (history + this run, old tool results left out when
   // needed). The state keeps everything.
-  const prompt = fitMessages(
-    withHistory(state.messages, state),
-    state.tools,
-    limits.maxPromptTokens,
-  );
+  const isRetry = state.emptyRetry === 'due';
+  const messages: ChatMessage[] = isRetry
+    ? [...state.messages, { role: 'user', content: EMPTY_REPLY_REMINDER }]
+    : state.messages;
+  const prompt = fitMessages(withHistory(messages, state), state.tools, limits.maxPromptTokens);
   if (!prompt) return { stopReason: 'context_full' };
   // The last prompt's measured size is the best guess for this one, unless this one was trimmed:
   // then it can be smaller, and the estimate counts too.
@@ -216,6 +229,7 @@ export async function callModel(
       tools: state.tools,
       ...(config.signal && { signal: config.signal }),
       ...(allowance !== undefined && { maxOutputTokens: allowance }),
+      ...(isRetry && { reasoning: 'off' as const }),
     },
     emit,
   );
@@ -223,6 +237,7 @@ export async function callModel(
 
   const used = modelCallUsage(result.usage);
   const update: AgentStateUpdate = { messages: [result.message], usage: used, iteration };
+  if (isRetry) update.emptyRetry = 'used';
   const finished = result.message.toolCalls.length === 0 && result.finishReason !== 'length';
   // The follow-up prompt holds this call's prompt and its reply, so it is at least their sum
   // (but never more than the biggest prompt allowed: trimming sees to that).
@@ -231,9 +246,18 @@ export async function callModel(
     limits.maxRunTokens,
     Math.min(used.inputTokens + used.outputTokens, limits.maxPromptTokens ?? Infinity),
   );
-  if (!finished && followUp === null) update.stopReason = 'token_budget';
+  const { content, toolCalls } = result.message;
+  if (toolCalls.length === 0 && content.trim() === '') {
+    update.messages = [];
+    const mayRetry = !isRetry && state.emptyRetry !== 'used';
+    if (mayRetry && followUp !== null && iteration < limits.maxIterations) {
+      update.emptyRetry = 'due';
+    } else {
+      update.stopReason = 'empty_answer';
+    }
+  } else if (!finished && followUp === null) update.stopReason = 'token_budget';
   // A text answer can come at any step: local models cannot be forced to use tools.
-  else if (result.message.toolCalls.length === 0) update.stopReason = answerStopReason(result);
+  else if (toolCalls.length === 0) update.stopReason = answerStopReason(result);
   return update;
 }
 
@@ -383,11 +407,13 @@ export function finalize(state: AgentStateValue): AgentStateUpdate {
 }
 
 /**
- * Router after `callModel`: finish if the model answered, otherwise check its tool calls for
- * approval. Returns a node name; LangGraph runs that node next.
+ * Router after `callModel`: finish if the model answered, ask it again after an empty reply (ADR
+ * 0052), otherwise check its tool calls for approval. Returns a node name; LangGraph runs that node
+ * next.
  */
-export function routeAfterModel(state: AgentStateValue): 'approvalGate' | 'finalize' {
-  return state.stopReason ? NODE.finalize : NODE.approvalGate;
+export function routeAfterModel(state: AgentStateValue): 'approvalGate' | 'callModel' | 'finalize' {
+  if (state.stopReason) return NODE.finalize;
+  return state.emptyRetry === 'due' ? NODE.callModel : NODE.approvalGate;
 }
 
 /**
