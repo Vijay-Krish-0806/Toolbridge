@@ -245,6 +245,7 @@ function finishedResult(state: AgentStateValue | undefined): AgentRunResult {
     answer: state.answer,
     stopReason: state.stopReason,
     usage: state.usage,
+    exposure: state.exposure,
     ...(state.summaryUpdate && { summaryUpdate: state.summaryUpdate }),
   };
 }

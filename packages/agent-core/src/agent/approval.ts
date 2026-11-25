@@ -8,6 +8,8 @@
  */
 import { z } from 'zod';
 
+import type { Exposure, FlaggedCall } from './exposure.js';
+
 /** `required`: a person must approve. `high`: someone other than the requester must approve. */
 export type ApprovalLevel = 'none' | 'required' | 'high';
 
@@ -16,11 +18,19 @@ export interface CallToCheck {
   name: string;
   safety: 'read' | 'write';
   args: Record<string, unknown>;
+  /** A platform tool that never reaches the tenant's API (see Tool.local). */
+  local?: boolean;
 }
 
 export interface ApprovalPolicy {
-  /** Decides a turn: the strictest level, and each call's own level and reason, in call order. */
-  evaluate(calls: CallToCheck[]): {
+  /**
+   * Decides a turn: the strictest level, and each call's own level and reason, in call order.
+   * `exposure` is what the model had read before it wrote these calls (Step 4.9).
+   */
+  evaluate(
+    calls: CallToCheck[],
+    exposure: Exposure,
+  ): {
     level: ApprovalLevel;
     calls: { level: ApprovalLevel; reason: string }[];
   };
@@ -43,6 +53,10 @@ export interface ApprovalRequest {
   /** Host user id of the person who asked; empty when the run has no identity. */
   requesterId: string;
   calls: PendingCall[];
+  /** Step 4.9: what the model had read before it wrote these calls, for the approver to see. */
+  exposure: Exposure;
+  /** The calls of this run whose results looked like instructions (the latest few). */
+  flagged: FlaggedCall[];
 }
 
 /** The answer a person gives. This is the value passed to `new Command({ resume })`. */

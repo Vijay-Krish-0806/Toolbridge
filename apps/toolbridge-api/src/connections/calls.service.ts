@@ -8,6 +8,7 @@ import {
   ToolRegistry,
   type ToolResult,
 } from '@toolbridge/agent-core';
+import { findInstructions } from '@toolbridge/policy';
 import type { Types } from 'mongoose';
 
 import { AuditLog } from '../audit/audit-log.js';
@@ -78,6 +79,7 @@ export class CallsService {
     const keyed = connection.idempotencyHeader !== null;
     return new ToolExecutor(new ToolRegistry(tools), {
       audit,
+      inspect: findInstructions,
       // Step 4.8: no identity, so reads are never cached; a write still invalidates the runs' cache.
       cache: this.cache.for({ tenantId, spec, connection }),
       ...(keyed && { idempotencyKeyFor: () => `tb-direct-${callId}` }),

@@ -27,6 +27,7 @@ import type { ChatMessage, ToolCall } from '../../llm/types.js';
 import type { AgentEvent, EmitEvent } from '../run-types.js';
 import { nextCallAllowance } from '../budget.js';
 import { estimatePrompt, fitMessages } from '../context-window.js';
+import { exposureOfTurn, MAX_FLAGGED } from '../exposure.js';
 import { MAX_RECALLED, selectMemories } from '../memories.js';
 import {
   MAX_SUMMARY_TOKENS,
@@ -267,8 +268,11 @@ export function approvalGate(state: AgentStateValue, config: NodeConfig): AgentS
     // An offered tool missing from the registry cannot happen; treat it as a write to be safe.
     safety: registry.get(call.name)?.safety ?? 'write',
     args: parseArgs(call.arguments),
+    ...(registry.get(call.name)?.local === true && { local: true }),
   }));
-  const batch = approvals.evaluate(checks);
+  // Step 4.9: the exposure BEFORE this turn's calls. A write in the same reply as a read was
+  // written without having seen that read's result.
+  const batch = approvals.evaluate(checks, state.exposure);
   if (batch.level === 'none') return { approvalOutcome: 'not_needed' };
   // Each call's own level, in the order of `calls`; not-offered calls get `none` with a reason.
   const decided = new Map(runnable.map((call, i) => [call.id, batch.calls[i]]));
@@ -286,6 +290,8 @@ export function approvalGate(state: AgentStateValue, config: NodeConfig): AgentS
         reason: own?.reason ?? 'Not offered to this run, so it will be refused, not run.',
       };
     }),
+    exposure: state.exposure,
+    flagged: state.flagged,
   };
   // First pass: pauses the run here. On resume: returns the person's answer.
   const answer: unknown = interrupt(request);
@@ -330,12 +336,20 @@ export async function executeTools(
     config.signal,
   );
   const turn = toolResultMessages(calls, results, state.consecutiveErrors);
+  // Step 4.9: from here on, everything the model writes may be influenced by these results.
+  const read = exposureOfTurn(calls, results, (name) =>
+    offered.has(name) ? registry.get(name) : undefined,
+  );
 
   const update: AgentStateUpdate = {
     messages: turn.messages,
     usage: { ...emptyUsage(), toolCalls: calls.length },
     consecutiveErrors: turn.consecutiveErrors,
+    exposure: read.exposure,
   };
+  if (read.flagged.length > 0) {
+    update.flagged = [...state.flagged, ...read.flagged].slice(-MAX_FLAGGED);
+  }
   // Step 4.7: a `once` tool that succeeded leaves the menu, so later replies cannot call it again
   // (a call that tries anyway is refused as not offered). The menu is in the state, so this also
   // holds after a pause or on another worker. Calls in the SAME reply all ran: they can differ.

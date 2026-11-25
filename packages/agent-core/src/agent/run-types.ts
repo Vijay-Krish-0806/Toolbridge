@@ -9,6 +9,7 @@ import type { ToolExecutor, ToolResult } from '../tools/executor.js';
 import type { ToolRegistry } from '../tools/registry.js';
 import type { RunAccess } from './access.js';
 import type { ApprovalPolicy } from './approval.js';
+import type { Exposure } from './exposure.js';
 import type { ConversationHistory, SummaryUpdate } from './conversation.js';
 import type { ToolSelection, ToolSelector } from './tool-selector.js';
 
@@ -116,6 +117,11 @@ export interface AgentRunResult {
   usage: AgentUsage;
   /** Step 4.7: set when this run summarized older turns; the caller saves it. */
   summaryUpdate?: SummaryUpdate;
+  /**
+   * Step 4.9: what the model had read by the end, earlier turns included. The caller saves it with
+   * the conversation. The raw loop does not track it.
+   */
+  exposure?: Exposure;
 }
 
 /** Usage at the start of a run: all zeros. */

@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { approvalFor, batchApproval } from './approvals.js';
+import { approvalFor, batchApproval, type CallToCheck, type Exposure } from './approvals.js';
 import { parsePolicy } from './policy.js';
 
 const policy = parsePolicy({
@@ -57,14 +57,48 @@ describe('approvalFor', () => {
 
 describe('batchApproval', () => {
   it('uses the strictest level in the turn and keeps each call level', () => {
-    const batch = batchApproval(policy, [
-      { name: 'orders_get', safety: 'read', args: {} },
-      write('orders_update_notes'),
-      write('refunds_request', { amountCents: 50000 }),
-    ]);
+    const batch = batchApproval(
+      policy,
+      [
+        { name: 'orders_get', safety: 'read', args: {} },
+        write('orders_update_notes'),
+        write('refunds_request', { amountCents: 50000 }),
+      ],
+      'none',
+    );
     expect(batch.level).toBe('high');
     expect(batch.calls.map((c) => c.level)).toEqual(['none', 'none', 'high']);
-    expect(batchApproval(policy, []).level).toBe('none');
+    expect(batchApproval(policy, [], 'flagged').level).toBe('none');
+  });
+});
+
+describe('the exposure rule (Step 4.9)', () => {
+  const levels = (exposure: Exposure, ...calls: CallToCheck[]) =>
+    batchApproval(policy, calls, exposure).calls.map((c) => c.level);
+  const notes = write('orders_update_notes'); // the policy says none
+  const refund = write('refunds_request', { amountCents: 500 }); // required
+  const cancel = write('orders_cancel'); // high
+
+  it('after reading tool data, every write waits for a person', () => {
+    expect(levels('none', notes, refund, cancel)).toEqual(['none', 'required', 'high']);
+    expect(levels('seen', notes, refund, cancel)).toEqual(['required', 'required', 'high']);
+  });
+
+  it('after reading text that looks like instructions, for someone else', () => {
+    expect(levels('flagged', notes, refund, cancel)).toEqual(['high', 'high', 'high']);
+  });
+
+  it('also under a policy that asks for nothing', () => {
+    const open = parsePolicy({ version: 1, roles: {}, approvals: { default: 'none' } });
+    expect(batchApproval(open, [write('anything')], 'none').level).toBe('none');
+    expect(batchApproval(open, [write('anything')], 'seen').level).toBe('required');
+    expect(batchApproval(open, [write('anything')], 'flagged').level).toBe('high');
+  });
+
+  it('leaves reads and local tools alone', () => {
+    const read = { name: 'orders_get', safety: 'read', args: {} } as const;
+    const local = { ...notes, local: true };
+    expect(levels('flagged', read, local)).toEqual(['none', 'none']);
   });
 });
 

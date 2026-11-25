@@ -13,6 +13,7 @@ export {
   type BatchApproval,
   type CallApproval,
   type CallToCheck,
+  type Exposure,
 } from './approvals.js';
 export {
   createAuthorizer,
@@ -21,3 +22,4 @@ export {
   type AccessDecision,
   type Principal,
 } from './decide.js';
+export { findInstructions, type InjectionFlag } from './injection.js';

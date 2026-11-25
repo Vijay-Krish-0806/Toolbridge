@@ -13,6 +13,10 @@
     },
     "test": {
       "dependsOn": ["^build"]
+    },
+    "@toolbridge/policy#test": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/evals/red-team/**"]
     }
   }
 }

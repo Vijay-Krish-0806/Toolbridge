@@ -43,6 +43,15 @@ const approvalRequired = z.object({
       reason: z.string(),
     }),
   ),
+  /**
+   * Step 4.9: what the agent had read when it wrote these calls: nothing from outside (`none`), tool
+   * data (`seen`), or tool data that looked like instructions (`flagged`).
+   */
+  exposure: z.enum(['none', 'seen', 'flagged']).optional(),
+  /** The calls whose results looked like instructions, and the kinds found. Never the text. */
+  flagged: z
+    .array(z.object({ tool: z.string(), arguments: z.string(), flags: z.array(z.string()) }))
+    .optional(),
 });
 
 /** The last event of a run. After it the stream closes. */

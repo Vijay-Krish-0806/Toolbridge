@@ -191,7 +191,7 @@ export class RunExecutor {
     const { tenantId, _id: runId } = run;
     const now = new Date();
     if (outcome.status === 'waiting_for_approval') {
-      const { level, requesterId, calls } = outcome.request;
+      const { level, requesterId, calls, exposure, flagged } = outcome.request;
       const open = await this.approvals(tenantId).findOne({ runId, status: 'pending' });
       const card =
         open ??
@@ -202,6 +202,8 @@ export class RunExecutor {
           level,
           requesterId,
           calls,
+          exposure,
+          flagged,
           approverId: null,
           approverSession: null,
           reason: null,
@@ -225,14 +227,17 @@ export class RunExecutor {
               level: c.level,
               reason: c.reason,
             })),
+            ...(card.exposure && { exposure: card.exposure }),
+            ...(card.flagged && { flagged: card.flagged }),
           },
         });
       }
       return;
     }
-    const { answer, stopReason, usage, summaryUpdate } = outcome.result;
+    const { answer, stopReason, usage, summaryUpdate, exposure } = outcome.result;
     // Before the run is marked completed: that frees the conversation for its next message, which
-    // must already see the new summary.
+    // must already see the new summary and exposure.
+    await this.conversations.saveExposure(tenantId, run, exposure ?? 'seen');
     if (summaryUpdate) await this.conversations.saveSummary(tenantId, run, summaryUpdate);
     const completed = await this.runs(tenantId).updateOne(
       { _id: runId, status: 'running' },

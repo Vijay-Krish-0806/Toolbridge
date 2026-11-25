@@ -102,6 +102,8 @@ describe('approval gate (durable runs)', () => {
         { ...lookup, level: 'none', reason: 'test rule: none' },
         { ...refund, level: 'high', reason: 'test rule: high' },
       ],
+      exposure: 'none',
+      flagged: [],
     });
     expect(write.runs()).toBe(0);
     expect(read.runs()).toBe(0); // all or nothing: the read waits with the write

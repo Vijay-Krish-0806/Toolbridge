@@ -9,6 +9,12 @@
  *    says otherwise: safe by default.
  * A model turn can make several calls; the turn is approved as one batch, and the STRICTEST
  * level in it decides who may approve (`high` beats `required` beats `none`).
+ *
+ * The EXPOSURE rule (Step 4.9, ADR 0047) comes on top and can only make a level stricter. Text
+ * that comes back from a tool may contain instructions written by an attacker, and a model cannot
+ * reliably tell them from ours. So once a model has read any of it, its writes wait for a person
+ * even where the policy says `none`; and once some of it looked like instructions, for a person
+ * other than the one who asked, who may be the one being fooled.
  */
 import { matches } from './decide.js';
 import type { ApprovalLevel, ApprovalRule, Policy } from './policy.js';
@@ -18,7 +24,15 @@ export interface CallToCheck {
   name: string;
   safety: 'read' | 'write';
   args: Record<string, unknown>;
+  /** A platform tool that never reaches the tenant's API and checks its own input (memory_save). */
+  local?: boolean;
 }
+
+/**
+ * What the model had read when it wrote these calls: nothing from outside, data from a tool, or
+ * data that looked like instructions. It only ever goes up in a run and its conversation.
+ */
+export type Exposure = 'none' | 'seen' | 'flagged';
 
 /** The level for one call, with a reason a person can read on the approval card. */
 export interface CallApproval {
@@ -55,13 +69,42 @@ export function approvalFor(policy: Policy, call: CallToCheck): CallApproval {
   };
 }
 
+/** What each exposure asks for at least, and why (shown on the card). */
+const EXPOSURE_RULE = {
+  seen: {
+    level: 'required',
+    reason: 'The agent wrote this after reading data from tools, so a person must check it.',
+  },
+  flagged: {
+    level: 'high',
+    reason:
+      'The agent wrote this after reading text that looks like instructions, so someone else than the requester must check it.',
+  },
+} as const;
+
+/**
+ * Applies the exposure rule to one decided call. Reads and local tools stay as they are; a level
+ * is never lowered.
+ * Before -> after: (orders_update_notes, `none`, seen) -> `required`; (refund, `high`, seen) ->
+ * `high`, unchanged; (refund, `required`, flagged) -> `high`.
+ */
+function raiseFor(exposure: Exposure, call: CallToCheck, decided: CallApproval): CallApproval {
+  if (exposure === 'none' || call.safety === 'read' || call.local === true) return decided;
+  const rule = EXPOSURE_RULE[exposure];
+  return STRICTNESS[rule.level] > STRICTNESS[decided.level] ? rule : decided;
+}
+
 /**
  * Decides a whole turn: each call's level, and the strictest one for the batch.
  * Before -> after: `[orders_get (read), refunds_request 32893]` ->
  * `{ level: 'high', calls: [{ level: 'none', ... }, { level: 'high', ... }] }`. No calls -> `none`.
  */
-export function batchApproval(policy: Policy, calls: CallToCheck[]): BatchApproval {
-  const decided = calls.map((call) => approvalFor(policy, call));
+export function batchApproval(
+  policy: Policy,
+  calls: CallToCheck[],
+  exposure: Exposure,
+): BatchApproval {
+  const decided = calls.map((call) => raiseFor(exposure, call, approvalFor(policy, call)));
   const level = decided.reduce<ApprovalLevel>(
     (strictest, c) => (STRICTNESS[c.level] > STRICTNESS[strictest] ? c.level : strictest),
     'none',
@@ -74,9 +117,9 @@ export function batchApproval(policy: Policy, calls: CallToCheck[]): BatchApprov
  * expects. agent-core never imports this package: the app that wires things together does.
  */
 export function createApprovalPolicy(policy: Policy): {
-  evaluate(calls: CallToCheck[]): BatchApproval;
+  evaluate(calls: CallToCheck[], exposure: Exposure): BatchApproval;
 } {
-  return { evaluate: (calls) => batchApproval(policy, calls) };
+  return { evaluate: (calls, exposure) => batchApproval(policy, calls, exposure) };
 }
 
 /**

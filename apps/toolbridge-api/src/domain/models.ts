@@ -4,7 +4,14 @@
  */
 import { type Connection, Schema, type Types } from 'mongoose';
 
-import type { AgentUsage, ApprovalRequest, PendingCall, Principal } from '@toolbridge/agent-core';
+import type {
+  AgentUsage,
+  ApprovalRequest,
+  Exposure,
+  FlaggedCall,
+  PendingCall,
+  Principal,
+} from '@toolbridge/agent-core';
 import type { RiskLevel, SafetyClass } from '@toolbridge/spec-compiler';
 
 import type { EncryptedSecret } from '../crypto/envelope.js';
@@ -201,6 +208,9 @@ export interface Approval {
   level: ApprovalRequest['level'];
   requesterId: string;
   calls: PendingCall[];
+  /** Step 4.9: what the agent had read when it wrote the calls. Unset on cards from before. */
+  exposure?: Exposure;
+  flagged?: FlaggedCall[];
   approverId: string | null;
   /** The approver's session (its jti): in delegated mode the approved calls use its host token. */
   approverSession: string | null;
@@ -286,6 +296,11 @@ export interface Conversation {
   summary: string;
   /** Creation time of the last run the summary covers; null when nothing is summarized yet. */
   summarizedThrough: Date | null;
+  /**
+   * Step 4.9: what the agent had read in any finished run so far; it never goes down. Unset on
+   * conversations from before that step: unknown, so treated as `seen`.
+   */
+  exposure?: Exposure;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -340,6 +355,11 @@ export interface AuditEntry {
    * from before that step.
    */
   cached?: boolean;
+  /**
+   * Step 4.9: kinds of instruction-like text found in the result (never the text). Unset on rows
+   * from before that step.
+   */
+  flags?: string[];
   /** The spec's policy version that authorized the call; null when the spec had no policy. */
   policyVersion: number | null;
   /** The approval that let this call run, or null (reads, refusals, direct calls). */
@@ -481,6 +501,7 @@ const conversationSchema = new Schema<Conversation>({
   credentialMode: { type: String, enum: ['service', 'delegated'], required: true },
   summary: { type: String, default: '' },
   summarizedThrough: { type: Date, default: null },
+  exposure: { type: String, enum: ['none', 'seen', 'flagged'] },
   createdAt: { type: Date, required: true },
   updatedAt: { type: Date, required: true },
 });
@@ -494,6 +515,8 @@ const approvalSchema = new Schema<Approval>({
   level: { type: String, enum: ['required', 'high'], required: true },
   requesterId: { type: String, required: true },
   calls: { type: Schema.Types.Mixed, required: true },
+  exposure: { type: String, enum: ['none', 'seen', 'flagged'] },
+  flagged: { type: Schema.Types.Mixed, default: [] },
   approverId: { type: String, default: null },
   approverSession: { type: String, default: null },
   reason: { type: String, default: null },
@@ -517,6 +540,7 @@ const auditSchema = new Schema<AuditEntry>({
   status: { type: String, default: null },
   durationMs: { type: Number, default: null },
   cached: { type: Boolean, default: false },
+  flags: { type: [String], default: [] },
   policyVersion: { type: Number, default: null },
   approval: { type: Schema.Types.Mixed, default: null },
 });

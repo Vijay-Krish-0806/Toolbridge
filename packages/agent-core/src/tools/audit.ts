@@ -45,6 +45,8 @@ export interface AuditOutcome {
   durationMs: number;
   /** Step 4.8: the result came from the cache, so nothing was sent to the API. */
   cached: boolean;
+  /** Step 4.9: kinds of instruction-like text found in the result (never the text). */
+  flags: string[];
 }
 
 export interface ToolAuditor {

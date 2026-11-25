@@ -42,6 +42,7 @@ export {
   type DurableRunInput,
   type ResumeRunInput,
 } from './agent/graph/run-graph.js';
+export { type Exposure, type FlaggedCall, worseExposure } from './agent/exposure.js';
 export {
   approvalDecisionSchema,
   type ApprovalDecision,

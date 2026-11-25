@@ -17,7 +17,12 @@ import {
   ToolRegistry,
 } from '@toolbridge/agent-core';
 import type { MongoStore } from '@toolbridge/checkpoint-mongo';
-import { createApprovalPolicy, createAuthorizer, type Policy } from '@toolbridge/policy';
+import {
+  createApprovalPolicy,
+  createAuthorizer,
+  findInstructions,
+  type Policy,
+} from '@toolbridge/policy';
 import type { Types } from 'mongoose';
 
 import { type AuditContext, AuditLog } from '../audit/audit-log.js';
@@ -176,6 +181,8 @@ export class RunToolsService {
             idempotencyKey(tenantId, run.runId, call.id, hashArguments(call.arguments)),
         }),
         ...(delegated && { credentialFor }),
+        // Step 4.9: marks results that look like instructions, for the audit and the approval card.
+        inspect: findInstructions,
         // Step 4.8: results are shared only between callers the API would answer the same: one
         // role in service mode, one user in delegated mode. An approved call runs as the APPROVER,
         // so its results are the approver's, not the requester's.

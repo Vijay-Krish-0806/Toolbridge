@@ -27,6 +27,7 @@ import type { ToolRegistry } from '../../tools/registry.js';
 import type { RunAccess } from '../access.js';
 import type { ApprovalPolicy } from '../approval.js';
 import type { ConversationTurn, SummaryUpdate } from '../conversation.js';
+import { EXPOSURES, type FlaggedCall, worseExposure } from '../exposure.js';
 import {
   type AgentLimits,
   type AgentUsage,
@@ -82,6 +83,14 @@ export const AgentState = new StateSchema({
 
   /** Model calls made so far. Compared with `maxIterations` to stop a model that never stops. */
   iteration: z.number().default(0),
+
+  /**
+   * What the model has read so far (Step 4.9). Reducer = the worse of the two, so it can never go
+   * down. In the state, so it is checkpointed: it survives a pause, a crash and another worker.
+   */
+  exposure: new ReducedValue(z.enum(EXPOSURES).default('none'), { reducer: worseExposure }),
+  /** The latest calls whose results looked like instructions, for the approval card. */
+  flagged: z.array(z.custom<FlaggedCall>()).default(() => []),
 
   /** Failed tool results in a row. Compared with `maxConsecutiveToolErrors`. */
   consecutiveErrors: z.number().default(0),

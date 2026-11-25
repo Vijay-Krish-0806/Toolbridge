@@ -2,7 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { ConversationHistory, Principal, SummaryUpdate } from '@toolbridge/agent-core';
+import type {
+  ConversationHistory,
+  Exposure,
+  Principal,
+  SummaryUpdate,
+} from '@toolbridge/agent-core';
 import type { Model, Types } from 'mongoose';
 
 import { mongooseCollection } from '../common/mongoose-collection.js';
@@ -60,6 +65,7 @@ export class ConversationsService {
       ...owned,
       summary: '',
       summarizedThrough: null,
+      exposure: 'none',
       createdAt: now,
       updatedAt: now,
     } as Omit<Conversation, '_id' | 'tenantId'>);
@@ -89,6 +95,8 @@ export class ConversationsService {
       MAX_TURNS,
     );
     return {
+      // Step 4.9: earlier answers and the summary were written after what those runs had read.
+      exposure: conversation.exposure ?? 'seen',
       summary: conversation.summary,
       turns: runs.toReversed().map((earlier) => ({
         id: earlier._id,
@@ -113,6 +121,15 @@ export class ConversationsService {
       { _id: run.conversationId },
       { summary: update.summary, summarizedThrough: through.createdAt, updatedAt: new Date() },
     );
+  }
+
+  /**
+   * Saves what the agent had read by the end of a run (Step 4.9). A run starts from its
+   * conversation's exposure and it only goes up, so the run's value is the conversation's new one.
+   */
+  async saveExposure(tenantId: Types.ObjectId, run: Run, exposure: Exposure): Promise<void> {
+    if (!run.conversationId) return;
+    await this.conversations(tenantId).updateOne({ _id: run.conversationId }, { exposure });
   }
 
   private conversations(tenantId: Types.ObjectId): TenantScoped<Conversation> {

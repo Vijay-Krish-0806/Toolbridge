@@ -11,6 +11,7 @@
  */
 import type { LLMProvider } from '../llm/provider.js';
 import type { ChatMessage, GenerateResult } from '../llm/types.js';
+import type { Exposure } from './exposure.js';
 import { memoryMessages } from './memories.js';
 import { clipText, estimateMessage, estimateTokens } from './context-window.js';
 
@@ -28,6 +29,11 @@ export interface ConversationHistory {
   summary: string;
   /** The turns not summarized yet, oldest first. */
   turns: ConversationTurn[];
+  /**
+   * Step 4.9: what the model had read in those turns. Their answers and the summary were written
+   * after it, so they can repeat an attacker's text. Missing means `none`.
+   */
+  exposure?: Exposure;
 }
 
 /** A new summary, and the last turn it covers, for the caller to save. */

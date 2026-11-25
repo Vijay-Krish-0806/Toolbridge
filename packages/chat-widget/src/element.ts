@@ -219,6 +219,15 @@ export class ToolbridgeChat extends HTMLElement {
           `Waiting for approval (${event.data.level === 'high' ? 'high risk' : 'required'})`,
           lines.join('\n'),
         );
+        if (event.data.exposure === 'flagged') {
+          const where = (event.data.flagged ?? []).map((f) => `${f.tool} ${f.arguments}`);
+          this.add(
+            'note error',
+            'Warning: the assistant read text that looks like instructions' +
+              `${where.length > 0 ? ` (${where.join('; ')})` : ' earlier in this conversation'}. ` +
+              'Check that you really want exactly this.',
+          );
+        }
         this.add('note', 'A person must approve this before it runs. You can close this page.');
         break;
       }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Principal, ToolAuthorizer } from '../agent/access.js';
+import { isUntrusted } from '../agent/exposure.js';
 import type { ToolCall } from '../llm/types.js';
 import type { AuthProvider } from '../openapi/auth.js';
 import type { CircuitBreaker } from './circuit-breaker.js';
@@ -23,10 +24,12 @@ import type { Tool } from './tool.js';
 /**
  * What a tool call produced. It is always a value, never an exception: errors are sent back to
  * the model as results so it can correct itself (for example, fix a bad argument).
- * `cached` is set when the result came from the cache (Step 4.8).
+ * `cached` is set when the result came from the cache (Step 4.8), `flags` when its text looks like
+ * instructions (Step 4.9).
  */
 export type ToolResult =
-  { ok: true; content: string; cached?: true } | { ok: false; error: ToolError };
+  | { ok: true; content: string; cached?: true; flags?: string[] }
+  | { ok: false; error: ToolError; flags?: string[] };
 
 /** Details of a failed attempt that will be retried, for logging. */
 export interface RetryEvent {
@@ -91,6 +94,12 @@ export interface ToolExecutorOptions {
    * invalidates it. A cache that fails is ignored. See tools/result-cache.ts.
    */
   cache?: ToolResultCache;
+  /**
+   * Step 4.9: looks for instruction-like text in what a tool returned (a cached result too, and an
+   * error that quotes the API). Returns the kinds it found; they go into `ToolResult.flags` and the
+   * audit. It never changes or blocks a result.
+   */
+  inspect?: (text: string) => string[];
 }
 
 /** Per-call options for `ToolExecutor.run`. */
@@ -132,6 +141,7 @@ export class ToolExecutor {
   private readonly rateLimit:
     (() => Promise<{ allowed: boolean; retryAfterMs: number }>) | undefined;
   private readonly cache: ToolResultCache | undefined;
+  private readonly inspect: ((text: string) => string[]) | undefined;
 
   /** Defaults: 10 s per attempt, 2 retries, 250 ms first backoff delay, 8,000-character results. */
   constructor(
@@ -151,6 +161,7 @@ export class ToolExecutor {
     this.breaker = options.breaker;
     this.rateLimit = options.rateLimit;
     this.cache = options.cache && forgivingCache(options.cache);
+    this.inspect = options.inspect;
   }
 
   /**
@@ -166,8 +177,19 @@ export class ToolExecutor {
    * With an auditor, the call is recorded around all of this (see `audited`).
    */
   async run(call: ToolCall, options: RunOptions = {}): Promise<ToolResult> {
-    if (!this.audit) return this.attempt(call, options);
+    if (!this.audit) return this.inspected(call, await this.attempt(call, options));
     return this.audited(this.audit, call, options);
+  }
+
+  /**
+   * Adds the flags of a result that holds text from outside.
+   * Before -> after: `{ ok: true, content: '{"notes":"SYSTEM: ..."}' }` ->
+   * the same plus `flags: ['fake_authority']`; nothing found -> unchanged.
+   */
+  private inspected(call: ToolCall, result: ToolResult): ToolResult {
+    if (!this.inspect || !isUntrusted(result, this.registry.get(call.name))) return result;
+    const flags = this.inspect(result.ok ? result.content : result.error.message);
+    return flags.length > 0 ? { ...result, flags } : result;
   }
 
   /**
@@ -186,11 +208,12 @@ export class ToolExecutor {
       safety: this.registry.get(call.name)?.safety ?? null,
       argsHash: hashArguments(call.arguments),
     };
-    const result = await this.attempt(call, options, { audit, entry });
+    const result = this.inspected(call, await this.attempt(call, options, { audit, entry }));
     const outcome = {
       status: result.ok ? ('ok' as const) : result.error.code,
       durationMs: Math.round(performance.now() - startedAt),
       cached: result.ok && result.cached === true,
+      flags: result.flags ?? [],
     };
     try {
       await audit.finished(entry, outcome);

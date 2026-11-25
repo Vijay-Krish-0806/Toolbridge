@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import type { PendingCall } from '@toolbridge/agent-core';
+import type { Exposure, FlaggedCall, PendingCall } from '@toolbridge/agent-core';
 import { isValidObjectId, type Model, Types } from 'mongoose';
 
 import { mongooseCollection } from '../common/mongoose-collection.js';
@@ -23,6 +23,10 @@ export interface ApprovalView {
   requesterId: string;
   /** Every call of the paused turn, with its exact arguments and its own level and reason. */
   calls: PendingCall[];
+  /** Step 4.9: what the agent had read when it wrote the calls (null on older cards). */
+  exposure: Exposure | null;
+  /** The calls whose results looked like instructions: a warning for the approver. */
+  flagged: FlaggedCall[];
   approverId: string | null;
   reason: string | null;
   decidedAt: Date | null;
@@ -148,6 +152,8 @@ function view(card: Approval): ApprovalView {
     level: card.level,
     requesterId: card.requesterId,
     calls: card.calls,
+    exposure: card.exposure ?? null,
+    flagged: card.flagged ?? [],
     approverId: card.approverId,
     reason: card.reason,
     decidedAt: card.decidedAt,
