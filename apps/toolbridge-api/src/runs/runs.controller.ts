@@ -108,7 +108,7 @@ export class RunsController {
 
 /**
  * Approval cards: the inbox, and approving or rejecting with a reason. SESSION TOKENS ONLY: the
- * approver is the token's user, and sees the cards of runs on the spec the session is for.
+ * approver is the token's user, and sees the cards of the session's spec that their role may decide.
  */
 @Controller('approvals')
 @SessionOnly()
@@ -117,7 +117,7 @@ export class ApprovalsController {
 
   @Get()
   list(@CurrentSession() session: SessionCaller, @Query() query: ListApprovalsQuery) {
-    return this.approvals.list(session.tenantId, session.specId, query.status);
+    return this.approvals.list(session, query.status);
   }
 
   /** 202 Accepted: the decision is recorded and the run continues in the background. */

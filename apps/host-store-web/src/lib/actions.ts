@@ -6,7 +6,8 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-import { HostError, hostFetch, hostLogin, SESSION_COOKIE } from './host';
+import { currentStaff, HostError, hostFetch, hostLogin, SESSION_COOKIE } from './host';
+import { decide, ToolBridgeError } from './toolbridge';
 
 const formText = (form: FormData, name: string): string => {
   const value = form.get(name);
@@ -59,4 +60,32 @@ export async function requestRefund(form: FormData): Promise<void> {
     result = error instanceof HostError ? `${String(error.status)} ${error.message}` : 'failed';
   }
   redirect(`/orders/${encodeURIComponent(number)}?refund=${encodeURIComponent(result)}`);
+}
+
+/** What the approvals page shows for each refusal ToolBridge can give. */
+const REFUSALS: Partial<Record<number, string>> = { 403: 'forbidden', 404: 'gone', 409: 'decided' };
+
+/**
+ * The approve and reject buttons (U3): decides a card AS THE SIGNED-IN USER. A Server Function can
+ * be called directly, not only from our page, so it checks the sign-in and its input itself.
+ * ToolBridge makes the real decision: who may approve, and that a card is decided only once.
+ * Before -> after: approve on an open card -> /approvals?result=approved; a second click ->
+ * /approvals?result=decided.
+ */
+export async function decideApproval(form: FormData): Promise<void> {
+  if (!(await currentStaff())) redirect('/login');
+  const approvalId = formText(form, 'approvalId');
+  const decision = formText(form, 'decision');
+  let result = 'failed';
+  // The id becomes part of a URL, so only a real id may pass.
+  if (/^[0-9a-f]{24}$/.test(approvalId) && (decision === 'approve' || decision === 'reject')) {
+    try {
+      await decide(approvalId, decision, formText(form, 'reason').trim().slice(0, 1000));
+      result = decision === 'approve' ? 'approved' : 'rejected';
+    } catch (error) {
+      if (!(error instanceof ToolBridgeError)) throw error;
+      result = REFUSALS[error.status] ?? 'failed';
+    }
+  }
+  redirect(`/approvals?result=${result}`);
 }

@@ -4,7 +4,8 @@
  * - approvals: no write executes before approval, and resuming never executes the same write
  *   twice (two approvers racing, and a second approval after an API restart);
  * - idempotency at the approval level: one card, one decision, one write;
- * - tenant isolation: another tenant cannot see, approve or reject a run or its card.
+ * - tenant isolation: another tenant cannot see, approve or reject a run or its card;
+ * - RBAC (U3): a role that may not use a card's tools cannot see or decide it.
  * Also: self-approval of a high-risk action is refused, reject runs nothing, and (Step 4.10)
  * every write can be
  * traced in the audit log to a person and an approval, while other tenants see none of it, and
@@ -424,6 +425,47 @@ describe('runs and approvals API', () => {
       .expect(202);
     const done = await waitFor(await user(alice, 'u1'), run.id, 'completed');
     expect(done.answer).toBe('final: Not run: rejected by u2: amount too high');
+    expect(refunds.length - before).toBe(0);
+  });
+
+  it('RBAC: a role that may not use the tool cannot see, approve or reject its card', async () => {
+    const before = refunds.length;
+    const { run, card } = await pausedRefund(alice);
+    const warehouse = await user(alice, 'w1', 'warehouse');
+    const seen = async (token: string) =>
+      body<CardView[]>(await as(token).get('/approvals').expect(200)).map((c) => c.id);
+    expect(await seen(warehouse)).not.toContain(card.id);
+    await as(warehouse).post(`/approvals/${card.id}/approve`).send({}).expect(404);
+    await as(warehouse).post(`/approvals/${card.id}/reject`).send({}).expect(404);
+    // Refused decisions change nothing: the run still waits and the owner can decide.
+    const waiting = await waitFor(await user(alice, 'u1'), run.id, 'waiting_for_approval');
+    expect(waiting.approvalId).toBe(card.id);
+    expect(refunds.length - before).toBe(0);
+    const owner = await user(alice, 'o1', 'owner');
+    expect(await seen(owner)).toContain(card.id);
+    await as(owner).post(`/approvals/${card.id}/approve`).send({}).expect(202);
+    await waitFor(await user(alice, 'u1'), run.id, 'completed');
+    expect(refunds.length - before).toBe(1);
+  });
+
+  it('RBAC: the policy of now decides; a requester who lost the tool may only withdraw', async () => {
+    const before = refunds.length;
+    const dana = await tenantWithSpec('Dana');
+    // Below the threshold: level `required`, which the requester could normally approve.
+    const { run, card } = await pausedRefund(dana, 'refund ORD-7 500');
+    expect(card.level).toBe('required');
+    await as(dana.key)
+      .put(`/specs/${dana.specId}/policy`)
+      .send({ policy: { version: 1, roles: { support: { allow: ['orders_get'] } } } })
+      .expect(200);
+    const requester = await user(dana, 'u1');
+    const colleague = await user(dana, 'u2');
+    await as(colleague).post(`/approvals/${card.id}/approve`).send({}).expect(404);
+    await as(requester).post(`/approvals/${card.id}/approve`).send({}).expect(403);
+    const mine = body<CardView[]>(await as(requester).get('/approvals').expect(200));
+    expect(mine.map((c) => c.id)).toContain(card.id);
+    await as(requester).post(`/approvals/${card.id}/reject`).send({}).expect(202);
+    await waitFor(requester, run.id, 'completed');
     expect(refunds.length - before).toBe(0);
   });
 

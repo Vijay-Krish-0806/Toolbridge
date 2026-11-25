@@ -22,9 +22,20 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className="bg-slate-50 text-slate-900 antialiased">
         <header className="border-b border-slate-200 bg-white">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-            <Link href="/orders" className="font-semibold">
-              Host Store
-            </Link>
+            <nav className="flex items-center gap-4">
+              <Link href="/orders" className="font-semibold">
+                Host Store
+              </Link>
+              {staff && (
+                <Link
+                  href="/approvals"
+                  prefetch={false}
+                  className="text-sm text-blue-700 hover:underline"
+                >
+                  Approvals
+                </Link>
+              )}
+            </nav>
             {staff && (
               <form action={signOut} className="flex items-center gap-3 text-sm">
                 <span>
