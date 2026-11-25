@@ -12,29 +12,43 @@
  * text in an answer or a tool argument cannot inject markup or scripts into the page.
  * A run in progress is remembered in localStorage, so reopening the tab picks it up again. So is the
  * conversation's id (never its text): the next message continues it until "New chat" is pressed.
+ *
+ * A normal write can be approved right here (ADR 0053). A high-risk one cannot: someone else must
+ * approve it, so there is no button. ToolBridge checks both again.
  */
 import type { RunEvent } from '@toolbridge/run-events';
 
 import { type GetToken, RunApiError, RunClient } from './client.js';
 
 const STYLE = `
-  :host { display: block; font: 14px/1.45 system-ui, sans-serif; color: var(--tb-text, #1d1d1f); }
-  .box { display: flex; flex-direction: column; height: var(--tb-height, 480px); border: 1px solid var(--tb-border, #d8d8dc); border-radius: 10px; background: var(--tb-bg, #fff); overflow: hidden; }
-  header { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid var(--tb-border, #d8d8dc); }
-  .log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-  .msg { padding: 8px 11px; border-radius: 10px; max-width: 85%; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .user { align-self: flex-end; background: var(--tb-accent, #2457d6); color: #fff; }
-  .assistant { align-self: flex-start; background: var(--tb-muted, #f1f2f4); }
-  .card { align-self: stretch; border: 1px solid var(--tb-border, #d8d8dc); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+  :host { display: block; font: 14px/1.5 system-ui, sans-serif; color: var(--tb-text, #1d1d1f); }
+  * { box-sizing: border-box; }
+  .box { display: flex; flex-direction: column; height: var(--tb-height, 480px); border: 1px solid var(--tb-border, #e2e4e6); border-radius: var(--tb-radius, 12px); background: var(--tb-bg, #fff); overflow: hidden; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--tb-border, #e2e4e6); }
+  .title { font-weight: 600; }
+  .sub { font-size: 12px; color: #6e6e73; }
+  .sub:empty { display: none; }
+  .log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { padding: 9px 12px; border-radius: 10px; max-width: 88%; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .user { align-self: flex-end; background: var(--tb-accent, #0f766e); color: #fff; border-bottom-right-radius: 3px; }
+  .assistant { align-self: flex-start; background: var(--tb-muted, #f4f5f6); border-bottom-left-radius: 3px; }
+  .card { align-self: stretch; border: 1px solid var(--tb-border, #e2e4e6); border-radius: 10px; padding: 8px 12px; font-size: 13px; background: var(--tb-muted, #f4f5f6); }
   .card summary { cursor: pointer; }
-  .card pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
-  .approval { border-color: #d39b2a; background: #fff8e8; }
-  .note { align-self: center; font-size: 12px; color: #6e6e73; }
+  .card pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, monospace; }
+  .approval { border-color: #f0dcae; background: #fffaef; }
+  .approval .label { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #8a5a00; }
+  .approval .tool { font-weight: 600; margin-top: 6px; }
+  .approval .why { font-size: 12px; color: #6e6e73; margin-top: 4px; }
+  .approval .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .approval .warn { margin-top: 8px; color: #b3261e; }
+  .note { align-self: center; text-align: center; font-size: 12px; color: #6e6e73; }
   .error { color: #b3261e; }
-  form { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--tb-border, #d8d8dc); }
-  input { flex: 1; padding: 8px 10px; font: inherit; border: 1px solid var(--tb-border, #d8d8dc); border-radius: 8px; }
-  button { padding: 8px 14px; font: inherit; border: 0; border-radius: 8px; background: var(--tb-accent, #2457d6); color: #fff; cursor: pointer; }
-  .new { padding: 4px 10px; font-size: 12px; background: transparent; color: inherit; border: 1px solid var(--tb-border, #d8d8dc); }
+  form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--tb-border, #e2e4e6); }
+  input { flex: 1; min-width: 0; padding: 9px 12px; font: inherit; border: 1px solid var(--tb-border, #d8d8dc); border-radius: 8px; }
+  button { padding: 9px 16px; font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 8px; background: var(--tb-accent, #0f766e); color: #fff; cursor: pointer; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--tb-accent, #0f766e); outline-offset: 2px; }
+  .plain { background: #fff; color: inherit; border-color: var(--tb-border, #d8d8dc); }
+  .new { padding: 4px 10px; font-size: 12px; font-weight: 400; background: transparent; color: inherit; border-color: var(--tb-border, #d8d8dc); }
   button:disabled { opacity: .5; cursor: default; }
 `;
 
@@ -44,11 +58,14 @@ interface SavedRun {
   lastSeq: number;
 }
 
+/** The event that carries an approval card. */
+type ApprovalRequired = Extract<RunEvent, { type: 'approval_required' }>;
+
 /** Why a request was dropped, as its abort reason. */
 const NEW_CHAT = 'new-chat';
 
 export class ToolbridgeChat extends HTMLElement {
-  static readonly observedAttributes = ['api-base', 'heading'];
+  static readonly observedAttributes = ['api-base', 'heading', 'subheading'];
 
   /** Set by the host page: fetches a session token from the host's own server. */
   getToken: GetToken | undefined;
@@ -58,8 +75,11 @@ export class ToolbridgeChat extends HTMLElement {
   private readonly input: HTMLInputElement;
   private readonly button: HTMLButtonElement;
   private readonly headingEl: HTMLElement;
+  private readonly subheadingEl: HTMLElement;
   private answer: HTMLElement | undefined;
   private readonly cards = new Map<string, HTMLElement>();
+  /** The buttons of the approval that is open right now, if it can be decided here. */
+  private openActions: HTMLElement | undefined;
   private stop: AbortController | undefined;
 
   constructor() {
@@ -69,7 +89,10 @@ export class ToolbridgeChat extends HTMLElement {
     style.textContent = STYLE;
     const box = el('div', 'box');
     const header = el('header');
-    this.headingEl = el('span');
+    const titles = el('div');
+    this.headingEl = el('div', 'title');
+    this.subheadingEl = el('div', 'sub');
+    titles.append(this.headingEl, this.subheadingEl);
     const newChat = document.createElement('button');
     newChat.className = 'new';
     newChat.type = 'button';
@@ -77,7 +100,7 @@ export class ToolbridgeChat extends HTMLElement {
     newChat.addEventListener('click', () => {
       this.newChat();
     });
-    header.append(this.headingEl, newChat);
+    header.append(titles, newChat);
     this.log = el('div', 'log');
     const form = document.createElement('form');
     this.input = document.createElement('input');
@@ -109,6 +132,7 @@ export class ToolbridgeChat extends HTMLElement {
 
   attributeChangedCallback(name: string, _old: string | null, value: string | null): void {
     if (name === 'heading') this.headingEl.textContent = value ?? 'Assistant';
+    if (name === 'subheading') this.subheadingEl.textContent = value ?? '';
   }
 
   /** Sends a message as a new run and follows it. */
@@ -140,6 +164,7 @@ export class ToolbridgeChat extends HTMLElement {
     this.clearRun();
     this.store(this.conversationKey(), undefined);
     this.cards.clear();
+    this.openActions = undefined;
     this.answer = undefined;
     this.log.replaceChildren();
     this.busy(false);
@@ -155,7 +180,11 @@ export class ToolbridgeChat extends HTMLElement {
       await this.followRun(client, saved.runId, saved.lastSeq, stop);
     } catch (error) {
       if (stop.aborted) return;
-      if (error instanceof RunApiError && error.status === 404) this.clearRun();
+      if (error instanceof RunApiError && error.status === 404) {
+        // Not this person's run: someone else signed in on this browser. Nothing to pick up.
+        this.newChat();
+        return;
+      }
       this.fail(error);
     }
   }
@@ -181,7 +210,7 @@ export class ToolbridgeChat extends HTMLElement {
       runId,
       (event) => {
         if (stop.aborted) return;
-        this.show(event);
+        this.show(event, client);
         this.saveRun({ runId, lastSeq: event.seq });
       },
       { after, signal: stop },
@@ -191,7 +220,10 @@ export class ToolbridgeChat extends HTMLElement {
   }
 
   /** Renders one event. Text only, never HTML. */
-  private show(event: RunEvent): void {
+  private show(event: RunEvent, client: RunClient): void {
+    // Anything that happens after a card means it was decided, here or by someone else.
+    this.openActions?.remove();
+    this.openActions = undefined;
     switch (event.type) {
       case 'text_delta':
         this.answer ??= this.add('msg assistant', '');
@@ -212,25 +244,9 @@ export class ToolbridgeChat extends HTMLElement {
         }
         break;
       }
-      case 'approval_required': {
-        const lines = event.data.calls.map((c) => `${c.tool} ${c.arguments}\n  ${c.reason}`);
-        this.details(
-          'card approval',
-          `Waiting for approval (${event.data.level === 'high' ? 'high risk' : 'required'})`,
-          lines.join('\n'),
-        );
-        if (event.data.exposure === 'flagged') {
-          const where = (event.data.flagged ?? []).map((f) => `${f.tool} ${f.arguments}`);
-          this.add(
-            'note error',
-            'Warning: the assistant read text that looks like instructions' +
-              `${where.length > 0 ? ` (${where.join('; ')})` : ' earlier in this conversation'}. ` +
-              'Check that you really want exactly this.',
-          );
-        }
-        this.add('note', 'A person must approve this before it runs. You can close this page.');
+      case 'approval_required':
+        this.showApproval(event.data, client);
         break;
-      }
       case 'run_finished':
         if (event.data.status !== 'completed') {
           this.add('note error', event.data.error ?? `The request ${event.data.status}.`);
@@ -246,6 +262,79 @@ export class ToolbridgeChat extends HTMLElement {
         break;
     }
     this.log.scrollTop = this.log.scrollHeight;
+  }
+
+  /**
+   * The approval card: every call with its exact arguments, never folded away, because this is what
+   * the person approves. Buttons only for a normal request.
+   */
+  private showApproval(data: ApprovalRequired['data'], client: RunClient): void {
+    const card = el('div', 'card approval');
+    card.append(el('div', 'label', data.level === 'high' ? 'HIGH RISK' : 'NEEDS YOUR OK'));
+    for (const call of data.calls) {
+      card.append(el('div', 'tool', call.tool));
+      card.append(el('pre', undefined, call.arguments), el('div', 'why', call.reason));
+    }
+    if (data.exposure === 'flagged') {
+      const where = (data.flagged ?? []).map((f) => `${f.tool} ${f.arguments}`);
+      card.append(
+        el(
+          'div',
+          'warn',
+          'Warning: the assistant read text that looks like instructions' +
+            `${where.length > 0 ? ` (${where.join('; ')})` : ' earlier in this conversation'}. ` +
+            'Check that you really want exactly this.',
+        ),
+      );
+    }
+    if (data.level === 'high') {
+      card.append(
+        el('div', 'why', 'Someone else must approve this before it runs. You can close this page.'),
+      );
+    } else {
+      const actions = el('div', 'actions');
+      actions.append(
+        this.decisionButton('approve', data.approvalId, client, card, actions),
+        this.decisionButton('reject', data.approvalId, client, card, actions),
+      );
+      card.append(actions);
+      this.openActions = actions;
+    }
+    this.log.append(card);
+  }
+
+  /** The Approve or Reject button. Both lock while one is being sent, so a card is decided once. */
+  private decisionButton(
+    decision: 'approve' | 'reject',
+    approvalId: string,
+    client: RunClient,
+    card: HTMLElement,
+    actions: HTMLElement,
+  ): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = decision === 'approve' ? 'Approve' : 'Reject';
+    if (decision === 'reject') button.className = 'plain';
+    button.addEventListener('click', () => {
+      const buttons = actions.querySelectorAll('button');
+      buttons.forEach((b) => (b.disabled = true));
+      client.decide(approvalId, decision).then(
+        () => {
+          actions.remove();
+          card.append(
+            el('div', 'why', decision === 'approve' ? 'You approved this.' : 'You rejected this.'),
+          );
+        },
+        (error: unknown) => {
+          actions.querySelector('.error')?.remove();
+          actions.append(el('span', 'error', error instanceof Error ? error.message : 'Failed.'));
+          // Already decided (409) or not allowed (403, 404): trying again cannot help.
+          const final = error instanceof RunApiError && [403, 404, 409].includes(error.status);
+          if (!final) buttons.forEach((b) => (b.disabled = false));
+        },
+      );
+    });
+    return button;
   }
 
   private client(): RunClient | undefined {
@@ -269,8 +358,7 @@ export class ToolbridgeChat extends HTMLElement {
   }
 
   private add(className: string, text: string): HTMLElement {
-    const node = el('div', className);
-    node.textContent = text;
+    const node = el('div', className, text);
     this.log.append(node);
     return node;
   }
@@ -332,8 +420,10 @@ export class ToolbridgeChat extends HTMLElement {
   }
 }
 
-function el(tag: string, className?: string): HTMLElement {
+/** Creates an element, with a class and TEXT (never HTML). */
+function el(tag: string, className?: string, text?: string): HTMLElement {
   const node = document.createElement(tag);
   if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
   return node;
 }

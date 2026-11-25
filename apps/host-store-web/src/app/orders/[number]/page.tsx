@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 
+import { StatusPill } from '../../../components/status-pill';
 import { requestRefund } from '../../../lib/actions';
 import { currentStaff, HostError, hostFetch, money, type Order } from '../../../lib/host';
 
@@ -25,14 +26,13 @@ export default async function OrderPage({
     throw error;
   }
   return (
-    <section className="space-y-4">
-      <Link href="/orders" className="text-sm text-blue-700 hover:underline">
+    <section className="max-w-2xl space-y-4">
+      <Link href="/orders" className="block text-sm text-teal-800 hover:underline">
         All orders
       </Link>
-      <div className="rounded-lg bg-white p-4 shadow">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h1 className="text-lg font-semibold">
-          {order.number}{' '}
-          <span className="text-sm font-normal text-slate-500">({order.status})</span>
+          {order.number} <StatusPill status={order.status} />
         </h1>
         <ul className="mt-3 text-sm">
           {order.items.map((item, i) => (
@@ -45,7 +45,10 @@ export default async function OrderPage({
           Total <strong>{money(order.totalCents)}</strong>
         </p>
       </div>
-      <form action={requestRefund} className="space-y-3 rounded-lg bg-white p-4 shadow">
+      <form
+        action={requestRefund}
+        className="space-y-3 rounded-xl border border-slate-200 bg-white p-4"
+      >
         <h2 className="font-semibold">Request a refund</h2>
         {refund && (
           <p className={`text-sm ${refund === 'ok' ? 'text-green-700' : 'text-red-700'}`}>
@@ -61,18 +64,21 @@ export default async function OrderPage({
             type="number"
             min={1}
             defaultValue={order.totalCents}
-            className="mt-1 block w-full rounded border border-slate-300 p-2"
+            className="mt-1 block w-full rounded-lg border border-slate-300 p-2"
           />
         </label>
         <label className="block text-sm">
           Reason
-          <select name="reason" className="mt-1 block w-full rounded border border-slate-300 p-2">
+          <select
+            name="reason"
+            className="mt-1 block w-full rounded-lg border border-slate-300 p-2"
+          >
             {REASONS.map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
         </label>
-        <button className="rounded bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800">
+        <button className="rounded-lg bg-teal-700 px-4 py-2 font-medium text-white hover:bg-teal-800">
           Request refund
         </button>
       </form>

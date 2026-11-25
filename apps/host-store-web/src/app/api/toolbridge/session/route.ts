@@ -7,8 +7,7 @@ import { mintSession, ToolBridgeError } from '../../../../lib/toolbridge';
 
 export async function POST(request: Request): Promise<Response> {
   // Same-origin calls only: another site cannot make a signed-in user's browser mint a token.
-  const origin = request.headers.get('origin');
-  if (origin !== null && origin !== new URL(request.url).origin) {
+  if (!isSameOrigin(request)) {
     return Response.json({ message: 'Cross-site request refused.' }, { status: 403 });
   }
   try {
@@ -21,4 +20,17 @@ export async function POST(request: Request): Promise<Response> {
     }
     return Response.json({ message: 'The assistant is unavailable.' }, { status: 502 });
   }
+}
+
+/**
+ * True when the request comes from one of our own pages, or not from a page at all. The browser
+ * sets both headers itself, so another site cannot fake them. Compared with `Host` (as Next.js does
+ * for Server Actions), not with `request.url`: Next may fill in another host name there, which
+ * refused our own pages opened at 127.0.0.1.
+ * Before -> after: Origin http://127.0.0.1:3001 and Host 127.0.0.1:3001 -> true.
+ */
+function isSameOrigin(request: Request): boolean {
+  const origin = request.headers.get('origin');
+  if (origin === null) return true;
+  return URL.canParse(origin) && new URL(origin).host === request.headers.get('host');
 }

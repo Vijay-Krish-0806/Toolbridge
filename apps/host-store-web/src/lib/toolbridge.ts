@@ -16,8 +16,12 @@ export interface ApprovalCall {
 /** An approval card, as ToolBridge's GET /approvals returns it. */
 export interface ApprovalCard {
   id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   level: 'required' | 'high';
   requesterId: string;
+  approverId: string | null;
+  reason: string | null;
+  decidedAt: string | null;
   calls: ApprovalCall[];
   exposure: 'none' | 'seen' | 'flagged' | null;
   createdAt: string;
@@ -56,10 +60,12 @@ export async function mintSession(): Promise<{ token: string; expiresAt: string 
   return { token, expiresAt };
 }
 
-/** The approval cards waiting for a decision that the signed-in staff member may see. */
-export async function pendingApprovals(): Promise<ApprovalCard[]> {
+/** The approval cards of one status that the signed-in staff member may see, oldest first. */
+export async function listApprovals(
+  status: 'pending' | 'approved' | 'rejected',
+): Promise<ApprovalCard[]> {
   const { token } = await mintSession();
-  return send(`${process.env.TOOLBRIDGE_API_URL ?? ''}/approvals?status=pending`, token);
+  return send(`${process.env.TOOLBRIDGE_API_URL ?? ''}/approvals?status=${status}`, token);
 }
 
 /**

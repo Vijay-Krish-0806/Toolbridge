@@ -1,1 +1,9 @@
 @import 'tailwindcss';
+
+/* The chat widget's own settings (CSS variables reach into its Shadow DOM): fill the side column. */
+toolbridge-chat {
+  --tb-height: 100%;
+  --tb-border: #e2e8f0;
+  --tb-radius: 0;
+  height: 100%;
+}

@@ -18,7 +18,8 @@ async function getToken(): Promise<{ token: string; expiresAt: string }> {
   return body;
 }
 
-export function ChatPanel({ apiBase }: { apiBase: string }) {
+/** `person` is shown under the heading, so it is clear whose rights the assistant has. */
+export function ChatPanel({ apiBase, person }: { apiBase: string; person: string }) {
   const host = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,7 +31,8 @@ export function ChatPanel({ apiBase }: { apiBase: string }) {
       if (cancelled) return;
       chat = document.createElement('toolbridge-chat');
       chat.setAttribute('api-base', apiBase);
-      chat.setAttribute('heading', 'Store assistant');
+      chat.setAttribute('heading', 'Assistant');
+      chat.setAttribute('subheading', `Acting as ${person}`);
       chat.getToken = getToken;
       container.append(chat);
     });
@@ -38,7 +40,7 @@ export function ChatPanel({ apiBase }: { apiBase: string }) {
       cancelled = true;
       chat?.remove();
     };
-  }, [apiBase]);
+  }, [apiBase, person]);
 
-  return <div ref={host} />;
+  return <div ref={host} className="h-full" />;
 }

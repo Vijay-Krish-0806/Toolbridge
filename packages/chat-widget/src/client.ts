@@ -78,6 +78,19 @@ export class RunClient {
   }
 
   /**
+   * Decides an approval card as the signed-in user. ToolBridge has the last word: 403 when this
+   * person may not approve it, 409 when someone already decided it. Never retried: a lost answer is
+   * shown as an error, and a second click then gets the 409.
+   */
+  async decide(approvalId: string, decision: 'approve' | 'reject'): Promise<void> {
+    await this.request(`/approvals/${encodeURIComponent(approvalId)}/${decision}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+  }
+
+  /**
    * Follows a run's events from after `after` until `run_finished`, calling `onEvent` for each in
    * order, and returns the last one. A dropped connection is retried with the last sequence
    * number, so no event is lost or repeated; `signal` stops following (the run itself goes on).

@@ -25,8 +25,11 @@ export interface Order {
   subtotalCents: number;
   discountCents: number;
   totalCents: number;
-  createdAt?: string;
+  placedAt: string;
 }
+
+/** The statuses the host knows, for the filter. */
+export const ORDER_STATUSES = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'] as const;
 
 /** A refusal from the host API, with its status and message (403 for a role, 404, 422...). */
 export class HostError extends Error {
