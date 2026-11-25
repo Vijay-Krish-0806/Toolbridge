@@ -22,6 +22,7 @@
     "knowledge:eval": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/knowledge-eval.js",
     "engines:compare": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/compare-engines.js",
     "openapi:check": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/openapi-check.js",
+    "red-team:live": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/red-team-live.js",
     "policy:check": "tsc -p tsconfig.build.json && node dist/scripts/policy-check.js"
   },
   "dependencies": {
