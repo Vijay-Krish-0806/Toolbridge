@@ -1,0 +1,19 @@
+{
+  "name": "@toolbridge/evals",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "dataset:check": "pnpm -w exec turbo run build --filter=@toolbridge/evals --filter=@toolbridge/host-store-api --output-logs=errors-only && node --env-file-if-exists=../.env dist/scripts/dataset-check.js"
+  },
+  "dependencies": {
+    "@toolbridge/agent-core": "workspace:*",
+    "@toolbridge/policy": "workspace:*",
+    "@toolbridge/spec-compiler": "workspace:*",
+    "mongodb": "7.8.0",
+    "zod": "4.6.7"
+  }
+}

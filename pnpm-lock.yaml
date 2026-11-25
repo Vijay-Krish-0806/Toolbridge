@@ -359,6 +359,24 @@ importers:
         specifier: 0.2.2
         version: 0.2.2
 
+  evals:
+    dependencies:
+      '@toolbridge/agent-core':
+        specifier: workspace:*
+        version: link:../packages/agent-core
+      '@toolbridge/policy':
+        specifier: workspace:*
+        version: link:../packages/policy
+      '@toolbridge/spec-compiler':
+        specifier: workspace:*
+        version: link:../packages/spec-compiler
+      mongodb:
+        specifier: 7.8.0
+        version: 7.8.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
   packages/agent-core:
     dependencies:
       '@langchain/core':

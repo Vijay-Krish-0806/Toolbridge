@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - evals
 allowBuilds:
   '@scarf/scarf': false
   # Optional native speed-up for BullMQ's serializer; msgpackr falls back to plain JavaScript.
