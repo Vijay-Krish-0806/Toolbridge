@@ -7,9 +7,12 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "dataset:check": "pnpm -w exec turbo run build --filter=@toolbridge/evals --filter=@toolbridge/host-store-api --output-logs=errors-only && node --env-file-if-exists=../.env dist/scripts/dataset-check.js"
+    "dataset:check": "pnpm -w exec turbo run build --filter=@toolbridge/evals --filter=@toolbridge/host-store-api --output-logs=errors-only && node --env-file-if-exists=../.env dist/scripts/dataset-check.js",
+    "scorer:check": "pnpm -w exec turbo run build --filter=@toolbridge/evals --filter=@toolbridge/host-store-api --output-logs=errors-only && node --env-file-if-exists=../.env dist/scripts/scorer-check.js",
+    "eval:run": "pnpm -w exec turbo run build --filter=@toolbridge/evals --filter=@toolbridge/host-store-api --output-logs=errors-only && node --env-file-if-exists=../.env dist/scripts/run.js"
   },
   "dependencies": {
+    "@langchain/langgraph": "1.7.5",
     "@toolbridge/agent-core": "workspace:*",
     "@toolbridge/policy": "workspace:*",
     "@toolbridge/spec-compiler": "workspace:*",

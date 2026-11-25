@@ -11,6 +11,7 @@ import {
   createOpenApiTools,
   SafeHttpClient,
   TokenLogin,
+  type Tool,
   ToolExecutor,
   ToolRegistry,
 } from '@toolbridge/agent-core';
@@ -82,13 +83,10 @@ export class EvalHost {
     return readWorld(this.mongo.db(EVAL_DB));
   }
 
-  /**
-   * An executor whose calls reach the host as the seeded user of this role. It has no policy:
-   * the replay wants the HOST's own answer, also for calls our policy would stop earlier.
-   */
-  executorFor(role: EvalCase['role']): ToolExecutor {
+  /** The store's tools, calling this host as the seeded user of the role. */
+  toolsFor(role: EvalCase['role']): Tool[] {
     const client = new SafeHttpClient({ allowPrivateHosts: [new URL(this.baseUrl).hostname] });
-    const tools = createOpenApiTools(this.store.tools, {
+    return createOpenApiTools(this.store.tools, {
       baseUrl: this.baseUrl,
       securitySchemes: this.store.model.securitySchemes,
       client,
@@ -99,7 +97,15 @@ export class EvalHost {
         tokenField: 'accessToken',
       }),
     });
-    return new ToolExecutor(new ToolRegistry(tools), { maxResultChars: 1_000_000 });
+  }
+
+  /**
+   * An executor for those tools without a policy: the replay wants the HOST's own answer, also for
+   * calls our policy would stop earlier.
+   */
+  executorFor(role: EvalCase['role']): ToolExecutor {
+    const registry = new ToolRegistry(this.toolsFor(role));
+    return new ToolExecutor(registry, { maxResultChars: 1_000_000 });
   }
 
   /** Stops the host process and closes the database connection. */
