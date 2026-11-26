@@ -8,16 +8,17 @@ import {
 } from '@nestjs/common';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { MongoSaver, MongoStore } from '@toolbridge/checkpoint-mongo';
-import { OllamaEmbeddingProvider, ToolIndex } from '@toolbridge/retrieval';
+import { KnowledgeIndex, OllamaEmbeddingProvider, ToolIndex } from '@toolbridge/retrieval';
 import type { Connection } from 'mongoose';
 
 import { AuditLog } from './audit/audit-log.js';
-import { CoreModule, MEMORY_STORE, TOOL_INDEX } from './common/core.module.js';
+import { CoreModule, KNOWLEDGE_INDEX, MEMORY_STORE, TOOL_INDEX } from './common/core.module.js';
 import type { PlatformConfig } from './config.js';
 import { ConnectionsService } from './connections/connections.service.js';
 import { MODEL } from './domain/models.js';
 import { EventLog } from './events/event-log.js';
 import { PoliciesService } from './policies/policies.service.js';
+import { KnowledgeService } from './runs/knowledge.js';
 import { Breakers, RateLimiter } from './runs/rate-limiter.js';
 import { RunQueue } from './runs/run-queue.js';
 import { RunToolsService } from './runs/run-tools.js';
@@ -70,6 +71,7 @@ export class PlatformModule {
       UsageLedger,
       ConversationsService,
       MemoriesService,
+      KnowledgeService,
     ];
     return {
       module: PlatformModule,
@@ -87,6 +89,14 @@ export class PlatformModule {
           useFactory: (connection: Connection) => {
             if (!connection.db) throw new Error('MongoDB connection has no database yet.');
             return new ToolIndex(connection.db, new OllamaEmbeddingProvider(config.embedding));
+          },
+          inject: [getConnectionToken()],
+        },
+        {
+          provide: KNOWLEDGE_INDEX,
+          useFactory: (connection: Connection) => {
+            if (!connection.db) throw new Error('MongoDB connection has no database yet.');
+            return new KnowledgeIndex(connection.db, new OllamaEmbeddingProvider(config.embedding));
           },
           inject: [getConnectionToken()],
         },
@@ -113,7 +123,7 @@ export class PlatformModule {
         LangGraphSetup,
         ...shared,
       ],
-      exports: [MongooseModule, TOOL_INDEX, CHECKPOINTER, ...shared],
+      exports: [MongooseModule, TOOL_INDEX, KNOWLEDGE_INDEX, CHECKPOINTER, ...shared],
     };
   }
 }

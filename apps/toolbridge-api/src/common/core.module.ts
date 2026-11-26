@@ -8,6 +8,8 @@ export const PLATFORM_CONFIG = Symbol('PLATFORM_CONFIG');
 export const OUTBOUND_HTTP = Symbol('OUTBOUND_HTTP');
 export const KEY_PROVIDER = Symbol('KEY_PROVIDER');
 export const TOOL_INDEX = Symbol('TOOL_INDEX');
+/** The knowledge index: policy passages per tenant and API (ADR 0054). */
+export const KNOWLEDGE_INDEX = Symbol('KNOWLEDGE_INDEX');
 /** LangGraph's store for long-term memories (Step 4.7). */
 export const MEMORY_STORE = Symbol('MEMORY_STORE');
 /** The model agent runs call (an LLMProvider from agent-core). */

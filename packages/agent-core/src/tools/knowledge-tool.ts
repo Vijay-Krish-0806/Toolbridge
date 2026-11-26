@@ -39,6 +39,9 @@ export function createKnowledgeTool(searcher: KnowledgeSearcher): Tool {
       'and how to handle a case. Returns passages, each with an id to cite. It does not look up ' +
       'orders or customers; use the store tools for those.',
     safety: 'read',
+    // It runs inside the platform and never calls the tenant's API. Its text is trusted: only the
+    // operator can load documents (ADR 0054), so reading a rule does not count as exposure.
+    local: true,
     input: z.object({
       query: z
         .string()

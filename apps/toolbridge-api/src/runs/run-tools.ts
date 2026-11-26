@@ -11,6 +11,7 @@ import {
   type SafeHttpClient,
   StaticCredentials,
   hashArguments,
+  KNOWLEDGE_TOOL_NAME,
   MEMORY_SAVE_TOOL,
   type ToolCall,
   ToolExecutor,
@@ -32,6 +33,7 @@ import type { CredentialMode, Spec } from '../domain/models.js';
 import { MemoriesService } from '../memories/memories.service.js';
 import { UserTokenStore } from '../sessions/user-token-store.js';
 import { PoliciesService } from '../policies/policies.service.js';
+import { KnowledgeService } from './knowledge.js';
 import { Breakers, RateLimiter } from './rate-limiter.js';
 import { SpecsService } from '../specs/specs.service.js';
 import { ToolCache } from './tool-cache.js';
@@ -55,6 +57,8 @@ export interface RunTools {
   approvals: ApprovalPolicy;
   /** The user's long-term memory (Step 4.7); left out when their role may not use it. */
   memory?: { store: MongoStore; namespace: string[] };
+  /** Policy search is offered (ADR 0054): the prompt gets its rules, the answer's sources a check. */
+  knowledge: boolean;
 }
 
 /**
@@ -83,6 +87,7 @@ export class RunToolsService {
     private readonly breakers: Breakers,
     private readonly memories: MemoriesService,
     private readonly cache: ToolCache,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   /**
@@ -140,6 +145,15 @@ export class RunToolsService {
     if (remembers && run.message !== undefined) {
       registry.register(this.memories.tool(owner, run.message));
     }
+    // ADR 0054: policy search, under the same rules: the role's policy must allow it, a tenant's own
+    // tool of that name wins, and without documents it is not offered.
+    const documents =
+      registry.get(KNOWLEDGE_TOOL_NAME) === undefined &&
+      authorizer.authorize(principal, KNOWLEDGE_TOOL_NAME).allowed
+        ? await this.knowledge.tool(tenantId, spec._id)
+        : undefined;
+    if (documents) registry.register(documents);
+
     const approvedCalls = new Set(run.approval?.calls.map((c) => c.id) ?? []);
     const delegated = credential.mode === 'delegated';
     const bearerSchemes = Object.entries(compiled.model.securitySchemes)
@@ -203,6 +217,7 @@ export class RunToolsService {
       access: { principal, authorizer },
       approvals: createApprovalPolicy(remembers ? withMemoryRule(policy) : policy),
       ...(remembers && { memory: this.memories.forRun(owner) }),
+      knowledge: documents !== undefined,
     };
   }
 }

@@ -15,7 +15,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "start": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/main.js",
-    "test:e2e": "tsc -p tsconfig.build.json && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "tsc -p tsconfig.build.json && vitest run --config vitest.e2e.config.ts",
+    "knowledge:load": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/scripts/knowledge-load.js"
   },
   "dependencies": {
     "@nestjs/common": "12.5.0",

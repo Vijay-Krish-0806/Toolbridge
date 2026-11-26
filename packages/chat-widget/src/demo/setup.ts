@@ -111,3 +111,9 @@ for (const file of ENV_FILES) {
   }
 }
 console.log(`Spec ${specId}: delegated credentials, origins ${ORIGINS.join(', ')}.`);
+// Documents are loaded by the operator, not through the API (ADR 0054), so this is only a hint.
+const { id: tenantId } = await call<{ id: string }>('GET', '/me', key);
+console.log('To let the chat search the store policies:');
+console.log(
+  `  pnpm --filter @toolbridge/toolbridge-api knowledge:load --tenant ${tenantId} --spec ${specId} --dir knowledge/host-store`,
+);

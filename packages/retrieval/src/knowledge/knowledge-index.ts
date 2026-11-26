@@ -98,6 +98,20 @@ export class KnowledgeIndex {
   }
 
   /**
+   * Rebuilds the indexes when any document exists (Atlas Local loses search indexes when its
+   * container restarts). Without documents there is nothing to search, so nothing to wait for:
+   * loading the first ones creates the indexes.
+   */
+  async ensureIndexesIfUsed(): Promise<void> {
+    if (await this.chunks.findOne({}, { projection: { _id: 1 } })) await this.ensureIndexes();
+  }
+
+  /** True when this source has any document, so a caller can leave the search out otherwise. */
+  async hasDocuments(scope: KnowledgeScope): Promise<boolean> {
+    return (await this.chunks.findOne(scope, { projection: { _id: 1 } })) !== null;
+  }
+
+  /**
    * Brings one source's stored chunks in line with its current chunks: changed or new chunks are
    * re-embedded (or taken from the cache), chunks that are gone are deleted.
    * Before -> after: 26 indexed chunks, one section edited ->

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import {
   type AgentEvent,
   type AgentRunOutcome,
+  answerSources,
   continueAgentRun,
   durableRunState,
   type LLMProvider,
@@ -74,7 +75,7 @@ export class RunExecutor {
         ? await this.approvals(tenantId).findOne({ _id: new Types.ObjectId(job.approvalId) })
         : null;
     const spec = await this.specs.requireSpec(tenantId, run.specId.toHexString());
-    const tools = await this.runTools.build(tenantId, spec, {
+    const { knowledge, ...tools } = await this.runTools.build(tenantId, spec, {
       runId: run._id,
       principal: run.principal,
       message: run.message,
@@ -112,7 +113,7 @@ export class RunExecutor {
       },
     };
     try {
-      await this.runLeg(job, run, card, leg, sink);
+      await this.runLeg(job, run, card, leg, sink, knowledge);
     } finally {
       await Promise.all([sink.flush(), meter.flush()]);
     }
@@ -125,6 +126,7 @@ export class RunExecutor {
     card: Approval | null,
     leg: Omit<Parameters<typeof continueAgentRun>[0], never>,
     sink: EventSink,
+    knowledge: boolean,
   ): Promise<void> {
     const state = await durableRunState(this.checkpointer, run._id);
     let outcome: AgentRunOutcome;
@@ -137,7 +139,7 @@ export class RunExecutor {
           {
             role: 'system',
             content: storeAgentSystemPrompt({
-              knowledge: false,
+              knowledge,
               memory: leg.memory !== undefined,
             }),
           },
@@ -157,7 +159,7 @@ export class RunExecutor {
       // Already paused on another card, or already finished: an earlier attempt got this far.
       outcome = state;
     }
-    await this.record(run, outcome, sink);
+    await this.record(run, outcome, sink, knowledge);
   }
 
   /**
@@ -187,7 +189,12 @@ export class RunExecutor {
    * graph's approval node must stay side-effect free). A retried leg that sees the same pause
    * reuses the open card instead of creating a second one.
    */
-  private async record(run: Run, outcome: AgentRunOutcome, sink: EventSink): Promise<void> {
+  private async record(
+    run: Run,
+    outcome: AgentRunOutcome,
+    sink: EventSink,
+    knowledge: boolean,
+  ): Promise<void> {
     const { tenantId, _id: runId } = run;
     const now = new Date();
     if (outcome.status === 'waiting_for_approval') {
@@ -244,7 +251,18 @@ export class RunExecutor {
       { status: 'completed', answer, stopReason, usage, updatedAt: now },
     );
     if (completed > 0) {
-      sink.push({ type: 'run_finished', data: { status: 'completed', answer, stopReason } });
+      // Only with OUR search on the menu: a tenant's own tool of that name proves nothing.
+      const checked = knowledge ? answerSources(outcome.result.messages, answer) : undefined;
+      sink.push({
+        type: 'run_finished',
+        data: {
+          status: 'completed',
+          answer,
+          stopReason,
+          ...(checked && { sources: checked.sources }),
+          ...(checked?.warning !== undefined && { sourceWarning: checked.warning }),
+        },
+      });
     }
   }
 

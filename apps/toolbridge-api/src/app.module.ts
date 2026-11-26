@@ -11,14 +11,14 @@ import {
 import { APP_GUARD } from '@nestjs/core';
 import { InjectConnection } from '@nestjs/mongoose';
 import type { SafeHttpClient } from '@toolbridge/agent-core';
-import type { ToolIndex } from '@toolbridge/retrieval';
+import type { KnowledgeIndex, ToolIndex } from '@toolbridge/retrieval';
 import type { Connection } from 'mongoose';
 
 import { AuditController } from './audit/audit.controller.js';
 import { Public } from './auth/auth.decorators.js';
 import { ApiKeyVerifier } from './auth/api-key-verifier.js';
 import { PlatformAuthGuard } from './auth/platform-auth.guard.js';
-import { OUTBOUND_HTTP, TOOL_INDEX } from './common/core.module.js';
+import { OUTBOUND_HTTP, KNOWLEDGE_INDEX, TOOL_INDEX } from './common/core.module.js';
 import { CallsService } from './connections/calls.service.js';
 import {
   AdminConnectionsController,
@@ -61,12 +61,14 @@ export class Lifecycle implements OnModuleInit, OnApplicationShutdown {
     @InjectConnection() private readonly connection: Connection,
     @Inject(OUTBOUND_HTTP) private readonly fetchClient: SafeHttpClient,
     @Inject(TOOL_INDEX) private readonly toolIndex: ToolIndex,
+    @Inject(KNOWLEDGE_INDEX) private readonly knowledgeIndex: KnowledgeIndex,
   ) {}
 
   /** The unique (tenantId, ...) indexes are part of correctness, so they exist before any request. */
   async onModuleInit(): Promise<void> {
     await createIndexes(this.connection);
     await this.toolIndex.ensureIndexes();
+    await this.knowledgeIndex.ensureIndexesIfUsed();
   }
 
   /** Frees the HTTP connection pool. */

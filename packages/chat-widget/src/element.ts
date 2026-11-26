@@ -41,6 +41,7 @@ const STYLE = `
   .approval .why { font-size: 12px; color: #6e6e73; margin-top: 4px; }
   .approval .actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
   .approval .warn { margin-top: 8px; color: #b3261e; }
+  .source { align-self: flex-start; font-size: 12px; color: #6e6e73; overflow-wrap: anywhere; }
   .note { align-self: center; text-align: center; font-size: 12px; color: #6e6e73; }
   .error { color: #b3261e; }
   form { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--tb-border, #e2e4e6); }
@@ -258,6 +259,12 @@ export class ToolbridgeChat extends HTMLElement {
             'The assistant did not write an answer. An approved change may already be done: please ' +
               'check, or ask again.',
           );
+        }
+        for (const source of event.data.sources ?? []) {
+          this.add('source', `Source: ${source.section} [${source.id}]`);
+        }
+        if (event.data.sourceWarning !== undefined) {
+          this.add('source error', `Please check: ${event.data.sourceWarning}.`);
         }
         break;
     }

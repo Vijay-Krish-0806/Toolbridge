@@ -60,6 +60,10 @@ const runFinished = z.object({
   answer: z.string().optional(),
   stopReason: z.string().optional(),
   error: z.string().optional(),
+  /** Policy passages the answer cites and that were really retrieved in this run (ADR 0054). */
+  sources: z.array(z.object({ id: z.string(), section: z.string() })).optional(),
+  /** Set when the reader should check the answer: an invented source, or none although searched. */
+  sourceWarning: z.string().optional(),
 });
 
 /** The data of each event type. */

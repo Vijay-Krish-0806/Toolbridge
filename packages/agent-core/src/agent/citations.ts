@@ -3,7 +3,7 @@
  * an id it never retrieved (a made-up source looks just as convincing). A citation is grounded
  * only when knowledge_search returned that id during the same run.
  */
-import type { ToolCall } from '../llm/types.js';
+import type { ChatMessage, ToolCall } from '../llm/types.js';
 import { KNOWLEDGE_TOOL_NAME } from '../tools/knowledge-tool.js';
 import type { ToolResult } from '../tools/executor.js';
 
@@ -86,5 +86,44 @@ export function checkCitations(answer: string, retrieved: ReadonlySet<string>): 
     cited,
     grounded: cited.filter((id) => retrieved.has(id)),
     ungrounded: cited.filter((id) => !retrieved.has(id)),
+  };
+}
+
+/** Where an answer comes from, as far as code can check it. */
+export interface AnswerSources {
+  /** Cited passages that knowledge_search really returned in this run. */
+  sources: { id: string; section: string }[];
+  /** Set when the reader should check the answer (an invented source, or none at all). */
+  warning?: string;
+}
+
+/**
+ * The checked sources of a finished run, from its messages: every leg's, because a resumed run's
+ * checkpoint holds them all. Undefined when the answer neither searched nor cites anything.
+ * Before -> after: knowledge_search returned `refund-policy#intro`, answer 'Yes [refund-policy#intro]'
+ * -> `{ sources: [{ id: 'refund-policy#intro', section: 'Refund policy' }] }`.
+ */
+export function answerSources(messages: ChatMessage[], answer: string): AnswerSources | undefined {
+  const searches = new Set(
+    messages
+      .flatMap((m) => (m.role === 'assistant' ? m.toolCalls : []))
+      .filter((call) => call.name === KNOWLEDGE_TOOL_NAME)
+      .map((call) => call.id),
+  );
+  const sectionOf = new Map<string, string>();
+  for (const message of messages) {
+    if (message.role !== 'tool' || !searches.has(message.toolCallId)) continue;
+    // A pattern, not JSON.parse: a long result may have been cut off.
+    const found = message.content.matchAll(/"id":"([^"]+)","section":("(?:[^"\\]|\\.)*")/g);
+    for (const [, id, section] of found) {
+      if (id && section) sectionOf.set(id, JSON.parse(section) as string);
+    }
+  }
+  const check = checkCitations(answer, new Set(sectionOf.keys()));
+  if (searches.size === 0 && check.cited.length === 0) return undefined;
+  const warning = answer.trim() === '' ? undefined : citationWarning(check, sectionOf.size, answer);
+  return {
+    sources: check.grounded.map((id) => ({ id, section: sectionOf.get(id) ?? id })),
+    ...(warning !== undefined && { warning }),
   };
 }

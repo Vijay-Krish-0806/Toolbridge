@@ -67,6 +67,13 @@ export {
   quotedSentences,
   type MemorySaveOptions,
 } from './tools/memory-tool.js';
+export {
+  createKnowledgeTool,
+  KNOWLEDGE_TOOL_NAME,
+  type KnowledgePassage,
+  type KnowledgeSearcher,
+} from './tools/knowledge-tool.js';
+export { answerSources, type AnswerSources } from './agent/citations.js';
 export { MIN_CALL_OUTPUT_TOKENS } from './agent/budget.js';
 export {
   costMicroUsd,
